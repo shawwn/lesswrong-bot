@@ -25,14 +25,17 @@ header .name { font-weight: 700; }
 a { color: #1d9bf0; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .muted, .muted a { color: #8b98a5; }
-article { border-top: 1px solid #38444d; padding: 14px 0; }
+article { display: flex; gap: 12px; border-top: 1px solid #38444d; padding: 14px 0; }
+article .body { flex: 1; min-width: 0; }
+.avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; background: #38444d; }
+.qavatar { width: 20px; height: 20px; border-radius: 50%; vertical-align: -4px; margin-right: 6px; }
 article.target { background: #1e2732; margin: 0 -16px; padding: 14px 16px; border-left: 3px solid #1d9bf0; }
 .text { white-space: pre-wrap; word-wrap: break-word; }
 .media img, .media video { display: block; max-width: 100%; border-radius: 12px; margin-top: 10px; }
 blockquote { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #38444d; border-radius: 12px; }
 .meta { margin-top: 8px; font-size: 14px; }
 h2 { font-size: 18px; margin: 18px 0 4px; }
-.byline { margin-bottom: 4px; font-size: 15px; }
+.byline { margin-bottom: 2px; font-size: 15px; }
 .byline b { color: #e7e9ea; }
 .children { margin-left: 14px; padding-left: 12px; border-left: 2px solid #38444d; }
 .children article:first-child { border-top: none; }
@@ -94,7 +97,7 @@ def _quote(status):
     a = q.get("author") or {}
     return (
         "<blockquote>"
-        f'<div class="muted"><b>{_e(a.get("name"))}</b> @{_e(a.get("screen_name"))} · '
+        f'<div class="byline muted">{_avatar(a, "qavatar")}<b>{_e(a.get("name"))}</b> @{_e(a.get("screen_name"))} · '
         f'<a href="{_e(_safe_url(q.get("url")))}">{_e(_date(q))}</a></div>'
         f'<div class="text">{_linkify(q.get("text") or "")}</div>{_media(q)}'
         "</blockquote>"
@@ -105,22 +108,28 @@ def _is_real(status):
     return status.get("type") != "tombstone" and "id" in status
 
 
-def _article(status, target_id, byline=False):
+def _avatar(author, cls="avatar"):
+    url = _safe_url((author or {}).get("avatar_url"))
+    if not url:
+        return f'<div class="{cls}"></div>'
+    return f'<img class="{cls}" src="{_e(url)}" loading="lazy" alt="">'
+
+
+def _article(status, target_id):
     if not _is_real(status):
         return f'<article class="muted">{_e(status.get("message") or "This post is unavailable")}</article>'
     sid = _e(status["id"])
     cls = ' class="target"' if status["id"] == target_id else ""
-    by = ""
-    if byline:
-        a = status.get("author") or {}
-        by = f'<div class="byline muted"><b>{_e(a.get("name"))}</b> @{_e(a.get("screen_name"))}</div>'
+    a = status.get("author") or {}
     return (
-        f'<article id="{sid}"{cls}>{by}'
+        f'<article id="{sid}"{cls}>{_avatar(a)}<div class="body">'
+        f'<div class="byline muted"><b>{_e(a.get("name"))}</b> @{_e(a.get("screen_name"))} · '
+        f'<a href="{_e(_safe_url(status.get("url")))}">{_e(_date(status))}</a></div>'
         f'<div class="text">{_linkify(status.get("text") or "")}</div>'
         f"{_media(status)}{_quote(status)}"
-        f'<div class="meta muted"><a href="{_e(_safe_url(status.get("url")))}">{_e(_date(status))}</a>'
-        f' · {status.get("likes", 0):,} likes · {status.get("reposts", 0):,} reposts</div>'
-        "</article>"
+        f'<div class="meta muted">{status.get("replies", 0):,} replies · '
+        f'{status.get("reposts", 0):,} reposts · {status.get("likes", 0):,} likes</div>'
+        "</div></article>"
     )
 
 
@@ -147,7 +156,7 @@ def _replies(conv, target_id, exclude):
     def tree(parent, depth):
         out = []
         for r in children.get(parent, []):
-            out.append(_article(r, target_id, byline=True))
+            out.append(_article(r, target_id))
             if r["id"] in children:
                 inner = tree(r["id"], depth + 1)
                 out.append(inner if depth >= MAX_REPLY_DEPTH else f'<div class="children">{inner}</div>')
