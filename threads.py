@@ -205,9 +205,27 @@ def _replies(conv, target_id, exclude):
         parent = _parent_id(r)
         children.setdefault(parent if parent in ids else target_id, []).append(r)
 
+    # Order like x.com: the original poster's own replies first, then replies
+    # the OP responded to somewhere below, then the rest (in API order).
+    op = ((conv.get("status") or {}).get("author") or {}).get("screen_name", "").lower()
+
+    def by_op(r):
+        return ((r.get("author") or {}).get("screen_name") or "").lower() == op
+
+    has_op = {}
+
+    def op_below(r):
+        if r["id"] not in has_op:
+            has_op[r["id"]] = False  # guards against cycles in bad data
+            has_op[r["id"]] = any(by_op(c) or op_below(c) for c in children.get(r["id"], []))
+        return has_op[r["id"]]
+
+    def rank(r):
+        return 0 if by_op(r) else 1 if op_below(r) else 2
+
     def tree(parent, depth):
         out = []
-        for r in children.get(parent, []):
+        for r in sorted(children.get(parent, []), key=rank):
             out.append(_article(r, target_id))
             if r["id"] in children:
                 inner = tree(r["id"], depth + 1)
@@ -238,13 +256,8 @@ def render(data, target_id, conv=None):
     replies_html, n_replies = _replies(conv or {}, target_id, {p["id"] for p in real})
     if len(real) < 2:
         title = f"Post by {name} (@{handle}) and replies"
-    body = []
-    for p in posts:
-        body.append(_article(p, target_id))
-        if p.get("id") == target_id:
-            body.append(replies_html)
-            replies_html = ""
-    body.append(replies_html)  # target wasn't in the thread list
+    # The author's thread continuation reads first (as on x.com), then replies.
+    body = [_article(p, target_id) for p in posts] + [replies_html]
 
     page = f"""<!doctype html>
 <html lang="en">
