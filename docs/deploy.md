@@ -117,6 +117,17 @@ or otherwise the first `<h1>` and the first real paragraph after it. Normal
 pages never start the browser. A render takes about 2–3s; at most 2 run at
 once.
 
+"Site-wide" means the page's `og:url` or `<link rel="canonical">` is the
+site's homepage while the link is a deeper path. We tried rendering every
+page instead (2026-10-13). It only helped on pages like that. On normal pages
+it was slower (up to 23s for GitHub) and often worse: bot-check pages ("Oh
+noes!"), or an `<h1>` that was a vote count (LessWrong) or a breadcrumb (arXiv).
+
+Other people's links to these pages: Robomot and feepbot don't render, so they
+show the site-wide title. The bot renders the page, waits up to 20s for both
+of them (`RIVAL_NICKS`) to reply, and posts its preview only if neither reply
+contains the real headline (`Bot.post_if_better`).
+
 - **Browser:** Google's `chrome-headless-shell` ("Chrome for Testing"), a
   standalone build. `deploy.sh` installs it to
   `/opt/chrome-headless-shell/<version>/` (version pinned as `CHROME_VERSION`

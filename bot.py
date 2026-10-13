@@ -41,11 +41,23 @@ IGNORE_NICKS = _nick_set("IGNORE_NICKS", "Robomot__,Robomot")
 # Bridge bots that relay other people's messages as "<nick> text"; treat those
 # as coming from nick.
 RELAY_NICKS = _nick_set("RELAY_NICKS", "feepbot")
+# Other link-preview bots. For non-WATCH_NICKS links to JavaScript-only pages
+# (which these bots preview with the site-wide title), we render the page,
+# wait for their replies, and post ours only if none of them got it right.
+RIVAL_NICKS = _nick_set("RIVAL_NICKS", "Robomot__,feepbot")
+RIVAL_WAIT = 20  # seconds to wait for every rival to reply
+# Writing this anywhere in a message gets full previews, as if from WATCH_NICKS.
+TRIGGER = os.environ.get("TRIGGER", "%sbot").casefold()
 
 # IRC formatting codes and zero-width characters (relays often put these inside
 # nicks so they don't ping the real person).
 _FORMATTING_RE = re.compile(r"\x03(?:\d{1,2}(?:,\d{1,2})?)?|[\x02\x0f\x16\x1d\x1e\x1f\u200b-\u200d\u2060\ufeff]")
 _RELAY_RE = re.compile(r"^<([^\s<>]{1,32})> (.*)$", re.DOTALL)
+
+
+def _normalize(text):
+    """Casefolded words only, for loose "does this message mention that" checks."""
+    return " ".join(re.findall(r"\w+", text.casefold()))
 
 
 def unrelay(sender, text):
@@ -84,6 +96,7 @@ class Bot:
         self.writer = None
         self.nick = NICK
         self.seen = {}  # (channel, url) -> timestamp
+        self.rival_lines = []  # (monotonic time, channel, nick, text) from RIVAL_NICKS
         self.send_queue = asyncio.Queue()
 
     # ------------------------------------------------------------------ io --
@@ -223,17 +236,19 @@ class Bot:
 
     def on_privmsg(self, sender, target, text):
         sender, text = unrelay(sender, text)
-        if sender.lower() in IGNORE_NICKS or sender.lower() == self.nick.lower():
-            return
-        full = sender.lower() in WATCH_NICKS
         if not target.startswith(("#", "&")):
             return  # ignore private messages
+        if sender.lower() in RIVAL_NICKS:
+            mono = time.monotonic()
+            self.rival_lines = [r for r in self.rival_lines if mono - r[0] < 2 * RIVAL_WAIT]
+            self.rival_lines.append((mono, target.lower(), sender.lower(), _FORMATTING_RE.sub("", text)))
+        if sender.lower() in IGNORE_NICKS or sender.lower() == self.nick.lower():
+            return
+        # Anyone can ask for full previews of their links by mentioning TRIGGER.
+        full = sender.lower() in WATCH_NICKS or TRIGGER in text.casefold()
         if text.startswith("\x01") and not text.startswith("\x01ACTION "):
             return  # CTCP other than /me
-        urls = previews.extract_urls(text)
-        if not full:
-            urls = [u for u in urls if previews.TWEET_RE.match(u)]
-        urls = urls[:MAX_URLS_PER_MESSAGE]
+        urls = previews.extract_urls(text)[:MAX_URLS_PER_MESSAGE]
         now = time.time()
         self.seen = {k: v for k, v in self.seen.items() if now - v < DUPLICATE_WINDOW}
         for url in urls:
@@ -241,7 +256,38 @@ class Bot:
             if key in self.seen:
                 continue
             self.seen[key] = now
-            asyncio.create_task(self.post_preview(target, url, sender, full))
+            if full or previews.TWEET_RE.match(url):
+                asyncio.create_task(self.post_preview(target, url, sender, full))
+            elif sender.lower() not in RIVAL_NICKS:
+                asyncio.create_task(self.post_if_better(target, url, time.monotonic()))
+
+    async def post_if_better(self, target, url, since):
+        """For someone else's non-tweet link: if it's a JavaScript-only page
+        that we can render, post our preview unless one of the other preview
+        bots already showed the real headline."""
+        try:
+            result = await asyncio.to_thread(previews.rendered_preview, url)
+        except previews.PreviewError:
+            return
+        except Exception:
+            log.exception("rendered preview crashed for %s", url)
+            return
+        if not result:
+            return
+        text, headline = result
+        chan = target.lower()
+
+        def replies():
+            return [(n, t) for (m, c, n, t) in self.rival_lines if m >= since and c == chan]
+
+        while time.monotonic() < since + RIVAL_WAIT and {n for n, _ in replies()} < RIVAL_NICKS:
+            await asyncio.sleep(0.5)
+        key = _normalize(headline)
+        if any(key in _normalize(t) for _, t in replies()):
+            log.info("not posting %s: another bot already showed %r", url, headline)
+            return
+        log.info("better preview %s -> %s", url, text)
+        self.say(target, text)
 
     async def post_preview(self, target, url, sender, full):
         # Post each step as soon as it's ready (e.g. tweet text before the

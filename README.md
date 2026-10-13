@@ -7,8 +7,12 @@ it replies with a preview in Robomot's style:
     No-login version of shawwwn's link: https://the.shawwn.net/t/2110024474938790330.html
 
 When anyone else posts a tweet link, it replies with just the second line,
-since Robomot already previews the tweet itself. It never replies to anyone
-else's other links, and it ignores Robomot entirely.
+since Robomot already previews the tweet itself. For anyone else's other
+links, it stays silent unless the page only shows its content via
+JavaScript (so other preview bots see just the site-wide title). In that case
+it renders the page, waits for Robomot and feepbot to reply (up to 20s), and
+posts its preview only if neither of them showed the page's real headline. It
+never replies to Robomot itself.
 
 It uses only the Python standard library (3.9+). Optionally, it uses headless
 Chrome to preview pages that only show their content via JavaScript.
@@ -58,6 +62,8 @@ To try out previews without connecting to IRC:
 | `WATCH_NICKS`          | `shawwwn`          | get full previews of every link; everyone else gets only the no-login link, and only for tweets. Comma-separated, case-insensitive |
 | `IGNORE_NICKS`         | `Robomot__,Robomot` | never replied to (other bots)           |
 | `RELAY_NICKS`          | `feepbot`          | bridge bots whose `<nick> text` messages count as from `nick` |
+| `RIVAL_NICKS`          | `Robomot__,feepbot` | other preview bots to wait for and compare against (see above) |
+| `TRIGGER`              | `%sbot`            | anyone who writes this in a message gets full previews, as if they were in `WATCH_NICKS` |
 | `MAX_URLS_PER_MESSAGE` | `3`                |                                          |
 | `THREAD_DIR`           |                    | where to write thread/reply HTML pages   |
 | `THREAD_URL`           |                    | public URL that serves `THREAD_DIR`      |

@@ -317,35 +317,39 @@ def preview_wikipedia(url):
 # --------------------------------------------------------------------------- #
 
 class _MetaParser(HTMLParser):
+    """<title>, <meta>, and canonical link, first occurrence of each. Reads the
+    whole document, not just <head>: some sites (e.g. LessWrong) put their
+    title and og: tags far down in the <body>."""
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.meta = {}
         self.title = ""
         self._in_title = False
-        self.done = False
+        self._svg = 0  # depth inside <svg>, whose <title>s are icon labels
 
     def handle_starttag(self, tag, attrs):
-        if self.done:
-            return
         a = {k.lower(): (v or "") for k, v in attrs}
-        if tag == "meta":
-            key = (a.get("property") or a.get("name") or a.get("itemprop") or "").lower()
+        if tag == "svg":
+            self._svg += 1
+        elif tag == "meta":
+            # Not itemprop: microdata in the body (e.g. comments) has its own
+            # "description"s, which aren't the page's.
+            key = (a.get("property") or a.get("name") or "").lower()
             if key and "content" in a and key not in self.meta:
                 self.meta[key] = a["content"]
             if a.get("charset"):
                 self.meta.setdefault("@charset", a["charset"])
         elif tag == "link" and "canonical" in a.get("rel", "").lower().split():
             self.meta.setdefault("@canonical", a.get("href", ""))
-        elif tag == "title" and not self.title:
+        elif tag == "title" and not self.title and not self._svg:
             self._in_title = True
-        elif tag == "body":
-            self.done = True
 
     def handle_endtag(self, tag):
         if tag == "title":
             self._in_title = False
-        elif tag == "head":
-            self.done = True
+        elif tag == "svg":
+            self._svg = max(0, self._svg - 1)
 
     def handle_data(self, data):
         if self._in_title:
@@ -403,7 +407,8 @@ def _sitewide_metadata(url, meta):
 
 def _rendered_preview(url, generic_title, site):
     """Render url in headless Chrome (see browser.py) and preview what the
-    page shows. None if rendering isn't available or doesn't help."""
+    page shows, as (text, headline). None if rendering isn't available or
+    doesn't help."""
     if not browser.enabled():
         return None
     try:
@@ -418,16 +423,19 @@ def _rendered_preview(url, generic_title, site):
             pass
     meta = meta_parser.meta
     title = clean(meta.get("og:title") or meta.get("twitter:title") or meta_parser.title)
-    if title and title != generic_title and not _sitewide_metadata(url, meta):
-        # The app filled in real metadata once its JavaScript ran.
+    if title and not _sitewide_metadata(url, meta) and title != generic_title:
+        # The app filled in page-specific metadata once its JavaScript ran.
+        # (The <h1> is only a fallback: on ordinary pages it's often a vote
+        # count, breadcrumb, or the site's name.)
         desc = clean(meta.get("og:description") or meta.get("twitter:description") or meta.get("description"))
     elif headline.h1:
         title, desc = headline.h1, headline.paragraph
     else:
         return None
+    headline = title
     if site and site.lower() not in title.lower():
         title = f"{title} ({site})"
-    return f"{title}: {desc}" if desc else title
+    return (f"{title}: {desc}" if desc else title), headline
 
 
 def _decode(body, charset):
@@ -440,7 +448,9 @@ def _decode(body, charset):
         return body.decode("utf-8", "replace")
 
 
-def preview_generic(url):
+def _static_metadata(url):
+    """Fetch url and return (final_url, title, desc, site, needs_render), or a
+    string preview for non-HTML responses."""
     final_url, ctype, charset, body, length = fetch(url)
     if "html" not in ctype:
         size = f", {human_size(length)}" if length and length.isdigit() else ""
@@ -456,11 +466,48 @@ def preview_generic(url):
     title = clean(meta.get("og:title") or meta.get("twitter:title") or parser.title)
     desc = clean(meta.get("og:description") or meta.get("twitter:description") or meta.get("description"))
     site = clean(meta.get("og:site_name"))
+    needs_render = not (title or desc) or _sitewide_metadata(final_url, meta)
+    return final_url, title, desc, site, needs_render
 
-    if not (title or desc) or _sitewide_metadata(final_url, meta):
+
+def rendered_preview(url):
+    """For pages whose HTML only has site-wide (or no) metadata, which is what
+    other preview bots will show: render the page and return (text, headline)
+    of what it really says. None for ordinary pages, or if rendering fails.
+    Used to decide whether to speak up for people other than WATCH_NICKS."""
+    if TWEET_RE.match(url):
+        return None
+    static = _static_metadata(url)
+    if isinstance(static, str):
+        return None
+    final_url, title, _, site, needs_render = static
+    if not needs_render:
+        return None  # ordinary page: the other bots see the same metadata we do
+    rendered = _rendered_preview(final_url, title, site)
+    if not rendered or _same_title(rendered[1], title):
+        return None  # rendering found nothing the other bots won't show
+    return rendered
+
+
+def _same_title(a, b):
+    """Loosely the same: equal, or one contains the other, ignoring case and
+    punctuation ("Flint" vs "Flint - Wikipedia")."""
+    a, b = (" ".join(re.findall(r"\w+", s.casefold())) for s in (a or "", b or ""))
+    return a == b or bool(a and b and (a in b or b in a))
+
+
+def preview_generic(url):
+    static = _static_metadata(url)
+    if isinstance(static, str):
+        return static
+    final_url, title, desc, site, needs_render = static
+
+    # Only render pages whose HTML has no metadata, or only site-wide metadata.
+    # Elsewhere rendering is slower and often worse (bot-check pages).
+    if needs_render:
         rendered = _rendered_preview(final_url, title, site)
         if rendered:
-            return rendered
+            return rendered[0]
 
     if not title and not desc:
         raise PreviewError("no title or description")
