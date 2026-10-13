@@ -13,7 +13,13 @@ from datetime import datetime, timezone
 THREAD_DIR = os.environ.get("THREAD_DIR", "")
 THREAD_URL = os.environ.get("THREAD_URL", "").rstrip("/")
 
-_URL_RE = re.compile(r"https?://[^\s<>\"']+")
+# URLs, @mentions, and #hashtags (a hashtag needs at least one non-digit, so
+# "#1" stays plain text).
+_LINK_RE = re.compile(
+    r"(?P<url>https?://[^\s<>\"']+)"
+    r"|(?<![\w@/])@(?P<user>[A-Za-z0-9_]{1,15})\b"
+    r"|(?<![\w&/#])#(?P<tag>\w*[^\W\d]\w*)"
+)
 
 CSS = """
 body { margin: 0; background: #15202b; color: #e7e9ea;
@@ -36,7 +42,9 @@ blockquote { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #38444d; bo
 .meta { margin-top: 8px; font-size: 14px; }
 h2 { font-size: 18px; margin: 18px 0 4px; }
 .byline { margin-bottom: 2px; font-size: 15px; }
-.byline b { color: #e7e9ea; }
+.byline b, header .name a { color: #e7e9ea; }
+a.who:hover { text-decoration: none; }
+a.who:hover b { text-decoration: underline; }
 .children { margin-left: 14px; padding-left: 12px; border-left: 2px solid #38444d; }
 .children article:first-child { border-top: none; }
 footer { border-top: 1px solid #38444d; padding-top: 12px; font-size: 13px; }
@@ -51,15 +59,39 @@ def _e(text):
     return html.escape(text or "", quote=True)
 
 
+def _profile_url(handle):
+    return f"https://x.com/{handle}"
+
+
 def _linkify(text):
     out, pos = [], 0
-    for m in _URL_RE.finditer(text):
-        url = m.group(0).rstrip(".,;:!?)")
+    for m in _LINK_RE.finditer(text):
+        if m.group("url"):
+            url = m.group("url").rstrip(".,;:!?")
+            while url.endswith(")") and url.count(")") > url.count("("):
+                url = url[:-1]
+            label = url
+        elif m.group("user"):
+            url, label = _profile_url(m.group("user")), "@" + m.group("user")
+        else:
+            url, label = f"https://x.com/hashtag/{m.group('tag')}", "#" + m.group("tag")
         out.append(_e(text[pos : m.start()]))
-        out.append(f'<a href="{_e(url)}" rel="nofollow noopener">{_e(url)}</a>')
-        pos = m.start() + len(url)
+        out.append(f'<a href="{_e(url)}" rel="nofollow noopener">{_e(label)}</a>')
+        pos = m.start() + len(label)
     out.append(_e(text[pos:]))
     return "".join(out)
+
+
+def _who(author, avatar_cls=None):
+    """Name and @handle, linked to the author's profile."""
+    handle = (author or {}).get("screen_name") or ""
+    avatar = _avatar(author, avatar_cls) if avatar_cls else ""
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,15}", handle):
+        return f"{avatar}<b>{_e(author.get('name'))}</b>"
+    return (
+        f'<a class="who" href="{_e(_profile_url(handle))}">{avatar}'
+        f'<b>{_e(author.get("name"))}</b> <span class="muted">@{_e(handle)}</span></a>'
+    )
 
 
 def _date(status):
@@ -97,7 +129,7 @@ def _quote(status):
     a = q.get("author") or {}
     return (
         "<blockquote>"
-        f'<div class="byline muted">{_avatar(a, "qavatar")}<b>{_e(a.get("name"))}</b> @{_e(a.get("screen_name"))} · '
+        f'<div class="byline muted">{_who(a, "qavatar")} · '
         f'<a href="{_e(_safe_url(q.get("url")))}">{_e(_date(q))}</a></div>'
         f'<div class="text">{_linkify(q.get("text") or "")}</div>{_media(q)}'
         "</blockquote>"
@@ -115,6 +147,13 @@ def _avatar(author, cls="avatar"):
     return f'<img class="{cls}" src="{_e(url)}" loading="lazy" alt="">'
 
 
+def _profile_link(author, inner):
+    handle = (author or {}).get("screen_name") or ""
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,15}", handle):
+        return inner
+    return f'<a href="{_e(_profile_url(handle))}">{inner}</a>'
+
+
 def _article(status, target_id):
     if not _is_real(status):
         return f'<article class="muted">{_e(status.get("message") or "This post is unavailable")}</article>'
@@ -122,8 +161,8 @@ def _article(status, target_id):
     cls = ' class="target"' if status["id"] == target_id else ""
     a = status.get("author") or {}
     return (
-        f'<article id="{sid}"{cls}>{_avatar(a)}<div class="body">'
-        f'<div class="byline muted"><b>{_e(a.get("name"))}</b> @{_e(a.get("screen_name"))} · '
+        f'<article id="{sid}"{cls}>{_profile_link(a, _avatar(a))}<div class="body">'
+        f'<div class="byline muted">{_who(a)} · '
         f'<a href="{_e(_safe_url(status.get("url")))}">{_e(_date(status))}</a></div>'
         f'<div class="text">{_linkify(status.get("text") or "")}</div>'
         f"{_media(status)}{_quote(status)}"
@@ -207,8 +246,8 @@ def render(data, target_id, conv=None):
 </head>
 <body><main>
 <header>
-{f'<img src="{_e(avatar)}" alt="">' if avatar else ""}
-<div><div class="name">{_e(name)}</div><div class="muted">@{_e(handle)}{f" · {len(real)} posts" if len(real) > 1 else ""}</div></div>
+{_profile_link(author, f'<img src="{_e(avatar)}" alt="">') if avatar else ""}
+<div><div class="name">{_profile_link(author, _e(name))}</div><div class="muted">{_profile_link(author, "@" + _e(handle))}{f" · {len(real)} posts" if len(real) > 1 else ""}</div></div>
 </header>
 {"".join(body)}
 <footer class="muted">Copied from <a href="{_e(_safe_url(first.get("url")))}">x.com</a>
