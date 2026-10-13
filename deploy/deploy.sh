@@ -66,7 +66,7 @@ echo "deployed: $(sudo -u "$USER" git -C "$DIR" log --oneline -1)"
 [ -n "$changed" ] && echo "changed: $(echo $changed)"
 
 # Files the running bot can pick up via SIGHUP (or doesn't use at runtime).
-reloadable='^(previews\.py|threads\.py|.*\.md|docs/.*|deploy/deploy\.sh|deploy/lesswrong-bot\.env\.example|\.gitignore)$'
+reloadable='^(previews\.py|threads\.py|.*\.md|docs/.*|deploy/deploy\.sh|deploy/lesswrong-bot\.env\.example|\.gitignore|pyproject\.toml)$'
 if [ -n "$changed" ] && echo "$changed" | grep -Eqv "$reloadable"; then
     restart=1
 fi
