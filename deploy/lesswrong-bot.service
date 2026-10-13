@@ -1,0 +1,24 @@
+# Installed to /etc/systemd/system/lesswrong-bot.service by deploy/deploy.sh.
+[Unit]
+Description=lesswrong-bot (IRC link previews) running in a tmux session as deploy
+Documentation=https://github.com/shawwn/lesswrong-bot/blob/master/docs/deploy.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=deploy
+WorkingDirectory=/opt/lesswrong-bot
+# Optional overrides (IRC_NICK, IRC_SASL_USER, IRC_SASL_PASS, ...). The tmux
+# server inherits this environment, so the bot sees it.
+EnvironmentFile=-/etc/lesswrong-bot.env
+# -d starts detached; the session is named "lesswrong-bot" so `tmux -L lesswrong-bot a` finds it.
+# -L gives it its own tmux server; otherwise it would join any other tmux server
+# the same user already runs (e.g. sharc on hetzner) and live in that service's cgroup.
+# The loop restarts the bot if it exits; Ctrl-C in the pane restarts it after 10s.
+ExecStart=/usr/bin/tmux -L lesswrong-bot new-session -d -s lesswrong-bot "while true; do sh run.sh; echo exited, restarting in 10s; sleep 10; done"
+ExecStop=/usr/bin/tmux -L lesswrong-bot kill-session -t lesswrong-bot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

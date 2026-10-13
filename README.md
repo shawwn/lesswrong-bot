@@ -53,5 +53,11 @@ Some Libera channels only allow registered nicks to join or speak. If the bot
 logs `cannot join channel`, register its nick with NickServ and set the SASL
 variables.
 
-The bot reconnects automatically with exponential backoff. To keep it running,
-use a systemd user unit, tmux, or similar.
+The bot reconnects automatically with exponential backoff.
+
+## Deploying
+
+    deploy/deploy.sh [ssh-host]
+
+This sets the bot up as a systemd-managed tmux session on a Debian/Ubuntu
+server. See [docs/deploy.md](docs/deploy.md).
