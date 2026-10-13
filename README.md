@@ -55,6 +55,7 @@ To try out previews without connecting to IRC:
 | `IRC_CHANNELS`         | `#lesswrong`       | comma-separated                          |
 | `WATCH_NICKS`          | `shawwwn`          | get full previews of every link; everyone else gets only the no-login link, and only for tweets. Comma-separated, case-insensitive |
 | `IGNORE_NICKS`         | `Robomot__,Robomot` | never replied to (other bots)           |
+| `RELAY_NICKS`          | `feepbot`          | bridge bots whose `<nick> text` messages count as from `nick` |
 | `MAX_URLS_PER_MESSAGE` | `3`                |                                          |
 | `THREAD_DIR`           |                    | where to write thread/reply HTML pages   |
 | `THREAD_URL`           |                    | public URL that serves `THREAD_DIR`      |

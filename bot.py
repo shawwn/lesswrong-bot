@@ -9,6 +9,7 @@ import base64
 import importlib
 import logging
 import os
+import re
 import signal
 import ssl
 import time
@@ -36,6 +37,22 @@ WATCH_NICKS = _nick_set("WATCH_NICKS", "shawwwn")
 # Never react to these (other bots; Robomot quotes tweet text, which can contain
 # tweet links, so answering it could ping-pong).
 IGNORE_NICKS = _nick_set("IGNORE_NICKS", "Robomot__,Robomot")
+# Bridge bots that relay other people's messages as "<nick> text"; treat those
+# as coming from nick.
+RELAY_NICKS = _nick_set("RELAY_NICKS", "feepbot")
+
+# IRC formatting codes and zero-width characters (relays often put these inside
+# nicks so they don't ping the real person).
+_FORMATTING_RE = re.compile(r"\x03(?:\d{1,2}(?:,\d{1,2})?)?|[\x02\x0f\x16\x1d\x1e\x1f\u200b-\u200d\u2060\ufeff]")
+_RELAY_RE = re.compile(r"^<([^\s<>]{1,32})> (.*)$", re.DOTALL)
+
+
+def unrelay(sender, text):
+    """("feepbot", "<gwern> hi") -> ("gwern", "hi"); other messages unchanged."""
+    if sender.lower() not in RELAY_NICKS:
+        return sender, text
+    m = _RELAY_RE.match(_FORMATTING_RE.sub("", text))
+    return (m.group(1), m.group(2)) if m else (sender, text)
 MAX_URLS_PER_MESSAGE = int(os.environ.get("MAX_URLS_PER_MESSAGE", "3"))
 DUPLICATE_WINDOW = 600  # seconds; don't re-preview the same URL in the same channel
 
@@ -204,6 +221,7 @@ class Bot:
             self.on_privmsg(prefix.split("!")[0], params[0], params[1])
 
     def on_privmsg(self, sender, target, text):
+        sender, text = unrelay(sender, text)
         if sender.lower() in IGNORE_NICKS or sender.lower() == self.nick.lower():
             return
         full = sender.lower() in WATCH_NICKS
