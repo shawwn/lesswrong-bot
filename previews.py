@@ -15,6 +15,7 @@ import urllib.request
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 
+import browser
 import threads
 
 USER_AGENT = "Mozilla/5.0 (compatible; lesswrong-linkbot/1.0; +https://libera.chat)"
@@ -333,6 +334,8 @@ class _MetaParser(HTMLParser):
                 self.meta[key] = a["content"]
             if a.get("charset"):
                 self.meta.setdefault("@charset", a["charset"])
+        elif tag == "link" and "canonical" in a.get("rel", "").lower().split():
+            self.meta.setdefault("@canonical", a.get("href", ""))
         elif tag == "title" and not self.title:
             self._in_title = True
         elif tag == "body":
@@ -347,6 +350,84 @@ class _MetaParser(HTMLParser):
     def handle_data(self, data):
         if self._in_title:
             self.title += data
+
+
+class _HeadlineParser(HTMLParser):
+    """The first <h1>'s text and the first substantial <p> after it."""
+
+    MIN_PARAGRAPH = 60
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.h1 = ""
+        self.paragraph = ""
+        self._in = None  # "h1" or "p" while collecting
+        self._buf = []
+        self._skip = 0  # depth inside <script>/<style>
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript"):
+            self._skip += 1
+        elif tag == "h1" and not self.h1 and self._in is None:
+            self._in, self._buf = "h1", []
+        elif tag == "p" and self.h1 and not self.paragraph and self._in is None:
+            self._in, self._buf = "p", []
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript"):
+            self._skip = max(0, self._skip - 1)
+        elif tag == self._in:
+            text = clean("".join(self._buf))
+            if self._in == "h1":
+                self.h1 = text
+            elif len(text) >= self.MIN_PARAGRAPH:
+                self.paragraph = text
+            self._in = None
+
+    def handle_data(self, data):
+        if self._in and not self._skip:
+            self._buf.append(data)
+
+
+def _sitewide_metadata(url, meta):
+    """True if the page's og:url/canonical is its site's homepage, but url is
+    some deeper page, so the title/description describe the site, not the page
+    (common for single-page apps)."""
+    declared = meta.get("og:url") or meta.get("@canonical")
+    if not declared:
+        return False
+    declared = urllib.parse.urljoin(url, declared)
+    path = urllib.parse.urlsplit(url).path.strip("/")
+    return bool(path) and urllib.parse.urlsplit(declared).path.strip("/") == ""
+
+
+def _rendered_preview(url, generic_title, site):
+    """Render url in headless Chrome (see browser.py) and preview what the
+    page shows. None if rendering isn't available or doesn't help."""
+    if not browser.enabled():
+        return None
+    try:
+        dom = browser.render(url)
+    except browser.RenderError:
+        return None
+    meta_parser, headline = _MetaParser(), _HeadlineParser()
+    for parser in (meta_parser, headline):
+        try:
+            parser.feed(dom)
+        except Exception:
+            pass
+    meta = meta_parser.meta
+    title = clean(meta.get("og:title") or meta.get("twitter:title") or meta_parser.title)
+    if title and title != generic_title and not _sitewide_metadata(url, meta):
+        # The app filled in real metadata once its JavaScript ran.
+        desc = clean(meta.get("og:description") or meta.get("twitter:description") or meta.get("description"))
+    elif headline.h1:
+        title, desc = headline.h1, headline.paragraph
+    else:
+        return None
+    if site and site.lower() not in title.lower():
+        title = f"{title} ({site})"
+    return f"{title}: {desc}" if desc else title
 
 
 def _decode(body, charset):
@@ -375,6 +456,11 @@ def preview_generic(url):
     title = clean(meta.get("og:title") or meta.get("twitter:title") or parser.title)
     desc = clean(meta.get("og:description") or meta.get("twitter:description") or meta.get("description"))
     site = clean(meta.get("og:site_name"))
+
+    if not (title or desc) or _sitewide_metadata(final_url, meta):
+        rendered = _rendered_preview(final_url, title, site)
+        if rendered:
+            return rendered
 
     if not title and not desc:
         raise PreviewError("no title or description")

@@ -10,7 +10,8 @@ When anyone else posts a tweet link, it replies with just the second line,
 since Robomot already previews the tweet itself. It never replies to anyone
 else's other links, and it ignores Robomot entirely.
 
-It uses only the Python standard library (3.9+).
+It uses only the Python standard library (3.9+). Optionally, it uses headless
+Chrome to preview pages that only show their content via JavaScript.
 
 ## Previews
 
@@ -60,6 +61,7 @@ To try out previews without connecting to IRC:
 | `MAX_URLS_PER_MESSAGE` | `3`                |                                          |
 | `THREAD_DIR`           |                    | where to write thread/reply HTML pages   |
 | `THREAD_URL`           |                    | public URL that serves `THREAD_DIR`      |
+| `CHROME`               |                    | headless Chrome binary, for rendering JavaScript-only pages (see docs/deploy.md) |
 | `LOG_LEVEL`            | `INFO`             | `DEBUG` logs raw IRC traffic             |
 
 Some Libera channels only allow registered nicks to join or speak. If the bot

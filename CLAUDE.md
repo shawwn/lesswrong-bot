@@ -13,6 +13,9 @@ Python standard library.
   `PreviewError`. To test a link without IRC: `python3 previews.py <url>`.
 - `threads.py`: renders a tweet's whole thread and its replies to a static
   HTML page (enabled by `THREAD_DIR`/`THREAD_URL`).
+- `browser.py`: renders JavaScript-only pages in headless Chrome (`CHROME`),
+  with all browser traffic going through a proxy that refuses non-public
+  addresses. Only used when a page's metadata is site-wide.
 - `run.sh`: the entry point used in production.
 - `deploy/`: the systemd unit and `deploy.sh`. **Read `docs/deploy.md` before
   deploying.** It covers the server, the layout, and the pitfalls we've already

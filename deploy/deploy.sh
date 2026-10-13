@@ -20,14 +20,20 @@ if [ "${1:-}" = "--restart" ]; then
 fi
 HOST=${1:-hetzner}
 HERE=$(cd "$(dirname "$0")" && pwd)
+# Headless browser for rendering single-page apps (see browser.py). Only
+# installed if /etc/lesswrong-bot.env sets CHROME. Versions:
+# https://googlechromelabs.github.io/chrome-for-testing/
+CHROME_VERSION=155.0.8059.39
 
 echo "==> copying unit file and config example to $HOST"
 scp -q "$HERE/lesswrong-bot.service" "$HOST:/tmp/lesswrong-bot.service"
 scp -q "$HERE/lesswrong-bot.env.example" "$HOST:/tmp/lesswrong-bot.env.example"
 
 echo "==> provisioning and updating on $HOST"
-ssh "$HOST" "FORCE_RESTART=$FORCE_RESTART sh -s" <<'REMOTE'
+ssh "$HOST" "FORCE_RESTART=$FORCE_RESTART CHROME_VERSION=$CHROME_VERSION sh -s" <<'REMOTE'
 set -eu
+# Never let package installs restart other services (needrestart: list only).
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 REPO=https://github.com/shawwn/lesswrong-bot.git
 DIR=/opt/lesswrong-bot
 USER=deploy
@@ -66,7 +72,7 @@ echo "deployed: $(sudo -u "$USER" git -C "$DIR" log --oneline -1)"
 [ -n "$changed" ] && echo "changed: $(echo $changed)"
 
 # Files the running bot can pick up via SIGHUP (or doesn't use at runtime).
-reloadable='^(previews\.py|threads\.py|.*\.md|docs/.*|deploy/deploy\.sh|deploy/lesswrong-bot\.env\.example|\.gitignore|pyproject\.toml)$'
+reloadable='^(browser\.py|previews\.py|threads\.py|.*\.md|docs/.*|deploy/deploy\.sh|deploy/lesswrong-bot\.env\.example|\.gitignore|pyproject\.toml)$'
 if [ -n "$changed" ] && echo "$changed" | grep -Eqv "$reloadable"; then
     restart=1
 fi
@@ -81,6 +87,51 @@ rm -f /tmp/lesswrong-bot.env.example
 THREAD_DIR=$(sed -n 's/^THREAD_DIR=//p' /etc/lesswrong-bot.env | tail -1)
 if [ -n "$THREAD_DIR" ]; then
     install -d -o "$USER" -g "$USER" -m 755 "$THREAD_DIR"
+fi
+
+# Headless Chrome, if configured.
+if grep -q '^CHROME=' /etc/lesswrong-bot.env; then
+    CHS=/opt/chrome-headless-shell
+    if [ ! -x "$CHS/$CHROME_VERSION/chrome-headless-shell" ]; then
+        echo "==> installing chrome-headless-shell $CHROME_VERSION"
+        # Libraries it needs beyond a minimal server (see deb.deps in the zip).
+        # Ubuntu 24.04 renamed some with a t64 suffix; prefer that if it exists.
+        pkgs="unzip ca-certificates"
+        for p in libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libxdamage1 libasound2 libatspi2.0-0; do
+            apt-cache show "${p}t64" >/dev/null 2>&1 && p="${p}t64"
+            pkgs="$pkgs $p"
+        done
+        apt-get install -yq --no-install-recommends $pkgs >/dev/null
+        tmp=$(mktemp -d)
+        curl -sSfo "$tmp/c.zip" "https://storage.googleapis.com/chrome-for-testing-public/$CHROME_VERSION/linux64/chrome-headless-shell-linux64.zip"
+        unzip -q "$tmp/c.zip" -d "$tmp"
+        install -d "$CHS/$CHROME_VERSION"
+        cp -a "$tmp/chrome-headless-shell-linux64/." "$CHS/$CHROME_VERSION/"
+        rm -rf "$tmp"
+    fi
+    ln -sfn "$CHROME_VERSION" "$CHS/current"
+    # Ubuntu 23.10+ blocks the unprivileged user namespaces Chrome's sandbox
+    # needs. Rather than --no-sandbox, let just this binary use them, as
+    # Chromium documents (docs/security/apparmor-userns-restrictions.md).
+    if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ]; then
+        printf '%s\n' \
+            '# Installed by lesswrong-bot deploy.sh: lets chrome-headless-shell create' \
+            '# user namespaces for its sandbox.' \
+            'abi <abi/4.0>,' \
+            'include <tunables/global>' \
+            '' \
+            "profile chrome-headless-shell $CHS/*/chrome-headless-shell flags=(unconfined) {" \
+            '  userns,' \
+            '  include if exists <local/chrome-headless-shell>' \
+            '}' > /etc/apparmor.d/chrome-headless-shell
+        apparmor_parser -r /etc/apparmor.d/chrome-headless-shell
+    fi
+    # Smoke test, as the bot's user.
+    if (cd /tmp && sudo -u "$USER" timeout 30 "$CHS/current/chrome-headless-shell" --dump-dom about:blank >/dev/null 2>&1); then
+        echo "chrome-headless-shell $CHROME_VERSION works"
+    else
+        echo "WARNING: chrome-headless-shell failed to start; rendering will be skipped"
+    fi
 fi
 
 systemctl daemon-reload

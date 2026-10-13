@@ -14,6 +14,7 @@ import signal
 import ssl
 import time
 
+import browser
 import previews
 import threads
 
@@ -139,7 +140,7 @@ class Bot:
     def reload(self):
         """Reload the preview code in place (on SIGHUP) without reconnecting.
         Changes to bot.py itself still need a restart."""
-        modules = [threads, previews]  # threads first: previews imports it
+        modules = [browser, threads, previews]  # previews imports the others
         for mod in modules:
             try:
                 with open(mod.__file__, encoding="utf-8") as f:

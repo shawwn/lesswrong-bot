@@ -106,6 +106,41 @@ hetzner, the existing `the.shawwn.net` nginx site (`root /srv/the.shawwn.net`,
 On a new server, either point an existing static site at `THREAD_DIR`, or
 leave `THREAD_DIR`/`THREAD_URL` unset to turn the feature off.
 
+### Rendering single-page apps (headless Chrome)
+
+Some sites (e.g. tibane.net) are JavaScript apps. Their HTML has only the
+site-wide title and description, with `og:url`/canonical pointing at the
+homepage, and the article itself is drawn by JavaScript. When the bot sees
+that (or a page with no title at all), it renders the page in headless Chrome
+(`browser.py`). It then uses the rendered page's metadata if the app fixed it,
+or otherwise the first `<h1>` and the first real paragraph after it. Normal
+pages never start the browser. A render takes about 2–3s; at most 2 run at
+once.
+
+- **Browser:** Google's `chrome-headless-shell` ("Chrome for Testing"), a
+  standalone build. `deploy.sh` installs it to
+  `/opt/chrome-headless-shell/<version>/` (version pinned as `CHROME_VERSION`
+  in `deploy.sh`), points `/opt/chrome-headless-shell/current` at it, and
+  apt-installs the few libraries it needs. This only happens if
+  `/etc/lesswrong-bot.env` sets `CHROME=` (the example does). We don't use
+  Ubuntu's Chromium because it's snap-only on 24.04.
+- **Sandbox:** Chrome's sandbox needs unprivileged user namespaces, which
+  Ubuntu 23.10+ blocks via AppArmor (`kernel.apparmor_restrict_unprivileged_userns=1`).
+  Rather than run with `--no-sandbox`, `deploy.sh` installs
+  `/etc/apparmor.d/chrome-headless-shell`, a profile that lets only that binary
+  use them (Chromium's documented fix, which Ubuntu's own Chrome package also
+  uses). It then smoke-tests the browser as `deploy`.
+- **Network:** a page's JavaScript could fetch internal services (sharc on
+  `localhost:8080`, cloud metadata, ...) and put the result in its title for
+  the bot to post. So Chrome runs with `--proxy-server` pointed at a filtering
+  proxy inside the bot (one per render, on a random localhost port), with
+  `--proxy-bypass-list=<-loopback>` so even localhost goes through it. The
+  proxy refuses any destination that isn't a public address and connects to
+  the exact address it checked. WebRTC UDP and QUIC are disabled because they
+  would bypass the proxy.
+- **To update Chrome:** bump `CHROME_VERSION` in `deploy.sh` and deploy. Old
+  versions stay in `/opt/chrome-headless-shell/` until you delete them.
+
 ## Operating
 
 All of these run as root on the server:
@@ -137,4 +172,13 @@ loop, without going through systemd.
   the `GH_TOKEN=$(gh auth token --user shawwn)` command above.
 - **Don't run as root.** The bot downloads and parses HTML from any link
   someone posts, which is why it runs as `deploy`. It also refuses to fetch
-  private or loopback addresses (`previews._check_host`).
+  private or loopback addresses (`previews._check_host`), and so does the
+  headless browser's proxy (`browser.py`).
+- **Chrome: "No usable sandbox!"** That's Ubuntu's user-namespace
+  restriction. The fix is the AppArmor profile above, not `--no-sandbox`.
+- **apt installs and other services.** Ubuntu's `needrestart` runs after
+  `apt-get install` and can restart services (like sharc). `deploy.sh` sets
+  `NEEDRESTART_MODE=l` so it only lists them.
+- **Ubuntu 24.04 `t64` package names.** Some libraries were renamed (e.g.
+  `libasound2` → `libasound2t64`), and the old name is a virtual package apt
+  won't install. `deploy.sh` uses the `t64` name when it exists.
