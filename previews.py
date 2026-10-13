@@ -28,6 +28,7 @@ YOUTUBE_RE = re.compile(
     r"^https?://(?:www\.|m\.|music\.)?(?:youtube\.com/(?:watch|shorts/|live/)|youtu\.be/)",
     re.IGNORECASE,
 )
+XKCD_RE = re.compile(r"^https?://(?:www\.|m\.)?xkcd\.com(?:/(\d+))?/?(?:[?#].*)?$", re.IGNORECASE)
 WIKIPEDIA_RE = re.compile(r"^https?://([a-z\-]+)\.(?:m\.)?wikipedia\.org/wiki/([^?#]+)", re.IGNORECASE)
 
 
@@ -229,6 +230,30 @@ def preview_youtube(url):
 
 
 # --------------------------------------------------------------------------- #
+# xkcd (JSON API). The bare image URL is included so IRCCloud inlines it.
+# --------------------------------------------------------------------------- #
+
+def preview_xkcd(url):
+    num = XKCD_RE.match(url).group(1)
+    data = fetch_json(f"https://xkcd.com/{num}/info.0.json" if num else "https://xkcd.com/info.0.json")
+    title = clean(data.get("safe_title") or data.get("title"))
+    try:
+        date = f"{int(data['year']):04d}-{int(data['month']):02d}-{int(data['day']):02d}"
+    except (KeyError, ValueError):
+        date = "?"
+    line = f"xkcd #{data.get('num')}: {title} ({date})"
+    img = data.get("img") or ""
+    # Interactive comics have no real image (img points at a directory).
+    if re.search(r"\.(?:png|jpe?g|gif|webp)$", img, re.IGNORECASE):
+        line += " " + img
+    alt = clean(data.get("alt"))
+    if alt:
+        head = line + ' | Alt: "'
+        line = head + truncate_bytes(alt, TWEET_BUDGET - len(head.encode("utf-8")) - 1) + '"'
+    return line
+
+
+# --------------------------------------------------------------------------- #
 # Wikipedia (REST summary API)
 # --------------------------------------------------------------------------- #
 
@@ -328,6 +353,11 @@ def preview(url):
         return preview_tweet(url)
     if YOUTUBE_RE.match(url):
         return preview_youtube(url)
+    if XKCD_RE.match(url):
+        try:
+            return preview_xkcd(url)
+        except PreviewError:
+            pass
     if WIKIPEDIA_RE.match(url):
         try:
             return preview_wikipedia(url)

@@ -14,6 +14,8 @@ It uses only the Python standard library (3.9+).
   newlines joined by ` / `, the quoted tweet, and direct links to any
   photos, videos, or GIFs. If the links don't fit on the same line, they go on
   the next one.
+- **xkcd**: number, title, date, the comic's image URL (so IRCCloud shows it
+  inline), and the alt text.
 - **YouTube**: title and channel, from oEmbed.
 - **Wikipedia**: the lead summary, from the REST API.
 - **Everything else**: OpenGraph / Twitter-card title and description,
