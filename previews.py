@@ -190,7 +190,7 @@ def _pack_lines(words, limit=TWEET_BUDGET):
     return lines
 
 
-def preview_tweet(url, nick=None):
+def preview_tweet(url, nick=None, full=True):
     m = TWEET_RE.match(url)
     user, status_id = m.group(1), m.group(2)
     # Twitter's own embed page renders the tweet (with media) without a login,
@@ -199,7 +199,8 @@ def preview_tweet(url, nick=None):
     # Like Robomot's "Alternate version of <nick>'s link: ...".
     link = _thread_link(status_id) or f"https://platform.twitter.com/embed/Tweet.html?id={status_id}"
     whose = f"{nick}'s" if nick else "this"
-    return f"No-login version of {whose} link: {link}\n{text}"
+    line = f"No-login version of {whose} link: {link}"
+    return f"{line}\n{text}" if full else line
 
 
 def _thread_link(status_id):
@@ -378,11 +379,14 @@ def preview_generic(url):
 # Dispatch
 # --------------------------------------------------------------------------- #
 
-def preview(url, nick=None):
+def preview(url, nick=None, full=True):
     """Return a preview for url (one or more lines), or raise PreviewError.
-    nick is who posted the link, for wording like "<nick>'s link"."""
+    nick is who posted the link, for wording like "<nick>'s link". With
+    full=False, only tweets get anything: just the no-login link line."""
     if TWEET_RE.match(url):
-        return preview_tweet(url, nick)
+        return preview_tweet(url, nick, full)
+    if not full:
+        raise PreviewError("only tweets get link-only previews")
     if YOUTUBE_RE.match(url):
         return preview_youtube(url)
     if XKCD_RE.match(url):

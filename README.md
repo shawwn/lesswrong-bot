@@ -1,9 +1,14 @@
 # lesswrong-bot
 
-IRC bot that joins `#lesswrong` on Libera.Chat, watches for messages from
-`shawwwn`, and replies with a one-line preview of any links, in Robomot's style:
+IRC bot that joins `#lesswrong` on Libera.Chat. When `shawwwn` posts a link,
+it replies with a preview in Robomot's style:
 
+    No-login version of shawwwn's link: https://the.shawwn.net/t/2110024474938790330.html
     Ravi Gupta (@GuptaRK22, 2026-10-13): "Today we announced an agreement to acquire Bumble. / Over the past six months, …"
+
+When anyone else posts a tweet link, it replies with just the first line,
+since Robomot already previews the tweet itself. It never replies to anyone
+else's other links, and it ignores Robomot entirely.
 
 It uses only the Python standard library (3.9+).
 
@@ -48,7 +53,8 @@ To try out previews without connecting to IRC:
 | `IRC_SASL_USER`        |                    | NickServ account, for SASL PLAIN login   |
 | `IRC_SASL_PASS`        |                    |                                          |
 | `IRC_CHANNELS`         | `#lesswrong`       | comma-separated                          |
-| `WATCH_NICKS`          | `shawwwn`          | comma-separated, case-insensitive        |
+| `WATCH_NICKS`          | `shawwwn`          | get full previews of every link; everyone else gets only the no-login link, and only for tweets. Comma-separated, case-insensitive |
+| `IGNORE_NICKS`         | `Robomot__,Robomot` | never replied to (other bots)           |
 | `MAX_URLS_PER_MESSAGE` | `3`                |                                          |
 | `THREAD_DIR`           |                    | where to write thread/reply HTML pages   |
 | `THREAD_URL`           |                    | public URL that serves `THREAD_DIR`      |

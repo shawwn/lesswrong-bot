@@ -26,7 +26,16 @@ REALNAME = os.environ.get("IRC_REALNAME", "link preview bot")
 SASL_USER = os.environ.get("IRC_SASL_USER", "")
 SASL_PASS = os.environ.get("IRC_SASL_PASS", "")
 CHANNELS = [c.strip() for c in os.environ.get("IRC_CHANNELS", "#lesswrong").split(",") if c.strip()]
-WATCH_NICKS = {n.strip().lower() for n in os.environ.get("WATCH_NICKS", "shawwwn").split(",") if n.strip()}
+def _nick_set(var, default):
+    return {n.strip().lower() for n in os.environ.get(var, default).split(",") if n.strip()}
+
+
+# Full previews (tweet text, xkcd, page titles, ...) for these nicks. Everyone
+# else only gets the no-login link for tweets, since Robomot previews the rest.
+WATCH_NICKS = _nick_set("WATCH_NICKS", "shawwwn")
+# Never react to these (other bots; Robomot quotes tweet text, which can contain
+# tweet links, so answering it could ping-pong).
+IGNORE_NICKS = _nick_set("IGNORE_NICKS", "Robomot__,Robomot")
 MAX_URLS_PER_MESSAGE = int(os.environ.get("MAX_URLS_PER_MESSAGE", "3"))
 DUPLICATE_WINDOW = 600  # seconds; don't re-preview the same URL in the same channel
 
@@ -195,13 +204,17 @@ class Bot:
             self.on_privmsg(prefix.split("!")[0], params[0], params[1])
 
     def on_privmsg(self, sender, target, text):
-        if sender.lower() not in WATCH_NICKS:
+        if sender.lower() in IGNORE_NICKS or sender.lower() == self.nick.lower():
             return
+        full = sender.lower() in WATCH_NICKS
         if not target.startswith(("#", "&")):
             return  # ignore private messages
         if text.startswith("\x01") and not text.startswith("\x01ACTION "):
             return  # CTCP other than /me
-        urls = previews.extract_urls(text)[:MAX_URLS_PER_MESSAGE]
+        urls = previews.extract_urls(text)
+        if not full:
+            urls = [u for u in urls if previews.TWEET_RE.match(u)]
+        urls = urls[:MAX_URLS_PER_MESSAGE]
         now = time.time()
         self.seen = {k: v for k, v in self.seen.items() if now - v < DUPLICATE_WINDOW}
         for url in urls:
@@ -209,11 +222,11 @@ class Bot:
             if key in self.seen:
                 continue
             self.seen[key] = now
-            asyncio.create_task(self.post_preview(target, url, sender))
+            asyncio.create_task(self.post_preview(target, url, sender, full))
 
-    async def post_preview(self, target, url, sender):
+    async def post_preview(self, target, url, sender, full):
         try:
-            text = await asyncio.to_thread(previews.preview, url, sender)
+            text = await asyncio.to_thread(previews.preview, url, sender, full)
         except previews.PreviewError as e:
             log.info("no preview for %s: %s", url, e)
             return

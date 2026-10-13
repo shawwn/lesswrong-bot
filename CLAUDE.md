@@ -2,7 +2,10 @@
 
 IRC bot for #lesswrong on Libera.Chat. When `shawwwn` posts links, it replies
 with Robomot-style one-line previews (tweets, xkcd, YouTube, Wikipedia,
-generic OpenGraph). It uses only the Python standard library.
+generic OpenGraph). For anyone else it replies only to tweet links, and only
+with the "No-login version of <nick>'s link: <url>" line; it stays silent on
+their other links. It ignores Robomot (`IGNORE_NICKS`). It uses only the
+Python standard library.
 
 - `bot.py`: the asyncio IRC client (TLS, SASL, reconnect, flood-limited
   sending). Configured through environment variables listed in README.md.
