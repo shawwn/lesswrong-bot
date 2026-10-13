@@ -190,6 +190,13 @@ def _pack_lines(words, limit=TWEET_BUDGET):
 def preview_tweet(url):
     m = TWEET_RE.match(url)
     user, status_id = m.group(1), m.group(2)
+    # Twitter's own embed page renders the tweet (with media) without a login,
+    # unlike x.com. Nitter/xcancel instances come and go; this doesn't.
+    text = _tweet_text(user, status_id)
+    return f"No-login link: https://platform.twitter.com/embed/Tweet.html?id={status_id}\n{text}"
+
+
+def _tweet_text(user, status_id):
     data = fetch_json(f"https://api.fxtwitter.com/{user}/status/{status_id}")
     tweet = data.get("tweet")
     if not tweet:
