@@ -10,9 +10,9 @@ It uses only the Python standard library (3.9+).
 ## Previews
 
 - **Twitter / X** (also fxtwitter, vxtwitter, fixupx, xcancel, nitter): fetched
-  through the public FxTwitter API. Posts a no-login link first. For a
-  multi-post thread, that's a page the bot writes with the whole thread (see
-  `THREAD_DIR` below). Otherwise it's Twitter's official embed page,
+  through the public FxTwitter API. Posts a no-login link first. If the tweet
+  is part of a thread or has replies, that's a page the bot writes with the
+  whole thread and the replies (see `THREAD_DIR` below). Otherwise it's Twitter's official embed page,
   `platform.twitter.com/embed/Tweet.html?id=…`. Then it
   shows the author, date, and text with newlines joined by ` / `, the quoted
   tweet, and direct links to any photos, videos, or GIFs. If the links don't
@@ -50,7 +50,7 @@ To try out previews without connecting to IRC:
 | `IRC_CHANNELS`         | `#lesswrong`       | comma-separated                          |
 | `WATCH_NICKS`          | `shawwwn`          | comma-separated, case-insensitive        |
 | `MAX_URLS_PER_MESSAGE` | `3`                |                                          |
-| `THREAD_DIR`           |                    | where to write whole-thread HTML pages   |
+| `THREAD_DIR`           |                    | where to write thread/reply HTML pages   |
 | `THREAD_URL`           |                    | public URL that serves `THREAD_DIR`      |
 | `LOG_LEVEL`            | `INFO`             | `DEBUG` logs raw IRC traffic             |
 

@@ -6,6 +6,7 @@ Each preview is a single line of plain text suitable for an IRC PRIVMSG.
 import html
 import ipaddress
 import json
+import logging
 import re
 import socket
 import urllib.error
@@ -203,14 +204,26 @@ def _embed_link(status_id):
 
 
 def _thread_link(status_id):
-    """Publish the whole thread as a page (see threads.py) if it is one."""
+    """Publish the thread and replies as a page (see threads.py), if there are any."""
     if not threads.enabled():
         return None
     try:
-        url, count = threads.publish(fetch_json(f"https://api.fxtwitter.com/2/thread/{status_id}"), status_id)
-    except (PreviewError, OSError, KeyError, TypeError, ValueError):
+        thread = fetch_json(f"https://api.fxtwitter.com/2/thread/{status_id}")
+        try:
+            conv = fetch_json(f"https://api.fxtwitter.com/2/conversation/{status_id}")
+        except PreviewError:
+            conv = None  # still worth publishing the thread alone
+        url, posts, replies = threads.publish(thread, status_id, conv)
+    except Exception:
+        # The page is a bonus; on any failure fall back to the embed link.
+        logging.getLogger(__name__).exception("thread page failed for %s", status_id)
         return None
-    return f"Thread ({count} posts, no login): {url}" if url else None
+    if not url:
+        return None
+    if posts > 1:
+        counts = f"{posts} posts" + (f", {replies} replies" if replies else "")
+        return f"Thread ({counts}, no login): {url}"
+    return f"Replies ({replies}, no login): {url}"
 
 
 def _tweet_text(user, status_id):

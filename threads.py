@@ -31,6 +31,11 @@ article.target { background: #1e2732; margin: 0 -16px; padding: 14px 16px; borde
 .media img, .media video { display: block; max-width: 100%; border-radius: 12px; margin-top: 10px; }
 blockquote { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #38444d; border-radius: 12px; }
 .meta { margin-top: 8px; font-size: 14px; }
+h2 { font-size: 18px; margin: 18px 0 4px; }
+.byline { margin-bottom: 4px; font-size: 15px; }
+.byline b { color: #e7e9ea; }
+.children { margin-left: 14px; padding-left: 12px; border-left: 2px solid #38444d; }
+.children article:first-child { border-top: none; }
 footer { border-top: 1px solid #38444d; padding-top: 12px; font-size: 13px; }
 """
 
@@ -96,13 +101,21 @@ def _quote(status):
     )
 
 
-def _article(status, target_id):
-    if status.get("type") == "tombstone" or "id" not in status:
+def _is_real(status):
+    return status.get("type") != "tombstone" and "id" in status
+
+
+def _article(status, target_id, byline=False):
+    if not _is_real(status):
         return f'<article class="muted">{_e(status.get("message") or "This post is unavailable")}</article>'
     sid = _e(status["id"])
     cls = ' class="target"' if status["id"] == target_id else ""
+    by = ""
+    if byline:
+        a = status.get("author") or {}
+        by = f'<div class="byline muted"><b>{_e(a.get("name"))}</b> @{_e(a.get("screen_name"))}</div>'
     return (
-        f'<article id="{sid}"{cls}>'
+        f'<article id="{sid}"{cls}>{by}'
         f'<div class="text">{_linkify(status.get("text") or "")}</div>'
         f"{_media(status)}{_quote(status)}"
         f'<div class="meta muted"><a href="{_e(_safe_url(status.get("url")))}">{_e(_date(status))}</a>'
@@ -111,10 +124,49 @@ def _article(status, target_id):
     )
 
 
-def render(data, target_id):
-    """Return (html, number_of_posts, first_post_id) for a /2/thread response."""
+MAX_REPLY_DEPTH = 6
+
+
+def _parent_id(status):
+    r = status.get("replying_to")
+    return r.get("status") if isinstance(r, dict) else None
+
+
+def _replies(conv, target_id, exclude):
+    """Render replies from a /2/conversation response as a nested tree.
+    Returns (html, number_shown)."""
+    replies = [r for r in conv.get("replies") or [] if _is_real(r) and r["id"] not in exclude]
+    if not replies:
+        return "", 0
+    ids = {r["id"] for r in replies}
+    children = {}
+    for r in replies:
+        parent = _parent_id(r)
+        children.setdefault(parent if parent in ids else target_id, []).append(r)
+
+    def tree(parent, depth):
+        out = []
+        for r in children.get(parent, []):
+            out.append(_article(r, target_id, byline=True))
+            if r["id"] in children:
+                inner = tree(r["id"], depth + 1)
+                out.append(inner if depth >= MAX_REPLY_DEPTH else f'<div class="children">{inner}</div>')
+        return "".join(out)
+
+    total = (conv.get("status") or {}).get("replies")
+    url = _safe_url((conv.get("status") or {}).get("url"))
+    more = ""
+    if isinstance(total, int) and total > len(replies):
+        more = f' <span class="muted">· {len(replies)} of {total:,}, <a href="{_e(url)}">more on x.com</a></span>'
+    return f'<section id="replies"><h2>Replies{more}</h2>{tree(target_id, 0)}</section>', len(replies)
+
+
+def render(data, target_id, conv=None):
+    """Render a /2/thread response, plus replies to target_id from a
+    /2/conversation response if given.
+    Returns (html, number_of_posts, number_of_replies)."""
     posts = data.get("thread") or [data["status"]]
-    real = [p for p in posts if p.get("type") != "tombstone" and "id" in p]
+    real = [p for p in posts if _is_real(p)]
     first = real[0] if real else data["status"]
     author = first.get("author") or data.get("author") or {}
     name, handle = author.get("name") or "?", author.get("screen_name") or "?"
@@ -122,6 +174,16 @@ def render(data, target_id):
     desc = " ".join((first.get("text") or "").split())[:300]
     avatar = _safe_url(author.get("avatar_url"))
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    replies_html, n_replies = _replies(conv or {}, target_id, {p["id"] for p in real})
+    if len(real) < 2:
+        title = f"Post by {name} (@{handle}) and replies"
+    body = []
+    for p in posts:
+        body.append(_article(p, target_id))
+        if p.get("id") == target_id:
+            body.append(replies_html)
+            replies_html = ""
+    body.append(replies_html)  # target wasn't in the thread list
 
     page = f"""<!doctype html>
 <html lang="en">
@@ -137,28 +199,30 @@ def render(data, target_id):
 <body><main>
 <header>
 {f'<img src="{_e(avatar)}" alt="">' if avatar else ""}
-<div><div class="name">{_e(name)}</div><div class="muted">@{_e(handle)} · {len(real)} posts</div></div>
+<div><div class="name">{_e(name)}</div><div class="muted">@{_e(handle)}{f" · {len(real)} posts" if len(real) > 1 else ""}</div></div>
 </header>
-{"".join(_article(p, target_id) for p in posts)}
+{"".join(body)}
 <footer class="muted">Copied from <a href="{_e(_safe_url(first.get("url")))}">x.com</a>
 via <a href="https://github.com/FxEmbed/FxEmbed">FxTwitter</a> at {now}.
 Made by <a href="https://github.com/shawwn/lesswrong-bot">lesswrong-bot</a>.</footer>
 </main></body>
 </html>
 """
-    return page, len(real), first.get("id") or target_id
+    return page, len(real), n_replies
 
 
-def publish(data, target_id):
-    """Write the thread page and return its URL (anchored at target_id), or None
-    if the tweet isn't part of a multi-post thread."""
-    page, count, first_id = render(data, target_id)
-    if count < 2:
-        return None, count
-    if not re.fullmatch(r"\d+", str(first_id)):
-        first_id = target_id  # never build a path from unexpected API data
+def publish(data, target_id, conv=None):
+    """Write the page and return (url, posts, replies). url is None if there is
+    nothing worth a page: a single post with no replies."""
+    page, posts, replies = render(data, target_id, conv)
+    if posts < 2 and not replies:
+        return None, posts, replies
+    # Named after the linked post, since the replies shown depend on it.
+    # target_id comes from our own URL regex, so it is always digits.
+    if not re.fullmatch(r"\d+", target_id):
+        raise ValueError(f"bad status id {target_id!r}")
     os.makedirs(THREAD_DIR, exist_ok=True)
-    name = f"{first_id}.html"
+    name = f"{target_id}.html"
     fd, tmp = tempfile.mkstemp(dir=THREAD_DIR, prefix=".tmp-", suffix=".html")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -168,4 +232,4 @@ def publish(data, target_id):
     except BaseException:
         os.unlink(tmp)
         raise
-    return f"{THREAD_URL}/{name}#{target_id}", count
+    return f"{THREAD_URL}/{name}#{target_id}", posts, replies
