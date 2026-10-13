@@ -7,6 +7,7 @@ import html
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 import urllib.error
@@ -33,6 +34,16 @@ YOUTUBE_RE = re.compile(
     re.IGNORECASE,
 )
 XKCD_RE = re.compile(r"^https?://(?:www\.|m\.)?xkcd\.com(?:/(\d+))?/?(?:[?#].*)?$", re.IGNORECASE)
+# github.com/<owner>/<repo>[/issues|pull/<n>]. Owner names that are GitHub's
+# own pages (github.com/settings/..., /orgs/..., ...) aren't repos.
+GITHUB_RE = re.compile(
+    r"^https?://(?:www\.)?github\.com/(?!(?:orgs|settings|features|topics|collections|marketplace|"
+    r"sponsors|login|join|about|pricing|explore|trending|search|notifications|new|apps|enterprise|"
+    r"security|customer-stories|readme|site|team|codespaces|copilot|issues|pulls|events)/)"
+    r"([A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?"
+    r"(?:/(issues|pull)/(\d+))?/?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
 WIKIPEDIA_RE = re.compile(r"^https?://([a-z\-]+)\.(?:m\.)?wikipedia\.org/wiki/([^?#]+)", re.IGNORECASE)
 
 
@@ -88,12 +99,12 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_SafeRedirectHandler)
 
 
-def fetch(url, accept="text/html,application/xhtml+xml,*/*;q=0.8"):
+def fetch(url, accept="text/html,application/xhtml+xml,*/*;q=0.8", headers=None):
     """Return (final_url, content_type, charset, body_bytes)."""
     _check_host(url)
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": USER_AGENT, "Accept": accept, "Accept-Language": "en-US,en;q=0.8"},
+        headers={"User-Agent": USER_AGENT, "Accept": accept, "Accept-Language": "en-US,en;q=0.8", **(headers or {})},
     )
     try:
         with _opener.open(req, timeout=TIMEOUT) as resp:
@@ -111,8 +122,8 @@ def fetch(url, accept="text/html,application/xhtml+xml,*/*;q=0.8"):
         raise PreviewError(f"fetch failed for {url}: {e}") from e
 
 
-def fetch_json(url):
-    _, _, charset, body, _ = fetch(url, accept="application/json")
+def fetch_json(url, accept="application/json", headers=None):
+    _, _, charset, body, _ = fetch(url, accept=accept, headers=headers)
     try:
         return json.loads(body.decode(charset or "utf-8", "replace"))
     except ValueError as e:
@@ -296,6 +307,132 @@ def preview_xkcd(url):
         head = line + ' | Alt: "'
         line = head + truncate_bytes(alt, TWEET_BUDGET - len(head.encode("utf-8")) - 1) + '"'
     return line
+
+
+# --------------------------------------------------------------------------- #
+# GitHub (REST API). Unauthenticated, the API allows 60 requests/hour per IP;
+# a repo preview uses 3. Set GITHUB_TOKEN (any token, no scopes needed) for
+# 5000/hour.
+# --------------------------------------------------------------------------- #
+
+def _github_api(path, accept="application/vnd.github+json"):
+    headers = {"X-GitHub-Api-Version": "2022-11-28"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    url = f"https://api.github.com/{path}"
+    if accept.endswith("json"):
+        return fetch_json(url, accept=accept, headers=headers)
+    _, _, charset, body, _ = fetch(url, accept=accept, headers=headers)
+    return body.decode(charset or "utf-8", "replace")
+
+
+def _count(n):
+    """63235 -> '63.2k'."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1000:
+        return f"{n / 1000:.1f}k".replace(".0k", "k")
+    return str(n)
+
+
+def _ago(iso):
+    try:
+        then = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return ""
+    days = (datetime.now(timezone.utc) - then).days
+    if days < 1:
+        return "today"
+    for size, unit in ((365, "year"), (30, "month"), (1, "day")):
+        if days >= size:
+            n = days // size
+            return f"{n} {unit}{'s' if n != 1 else ''} ago"
+
+
+class _FirstParagraphParser(HTMLParser):
+    """Text of the first <p> with real prose (skips logos and badge rows)."""
+
+    MIN_LENGTH = 60
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.text = ""
+        self._buf = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "p" and not self.text:
+            self._buf = []
+
+    def handle_endtag(self, tag):
+        if tag == "p" and self._buf is not None:
+            text = clean("".join(self._buf))
+            if len(text) >= self.MIN_LENGTH:
+                self.text = text
+            self._buf = None
+
+    def handle_data(self, data):
+        if self._buf is not None:
+            self._buf.append(data)
+
+
+def _github_repo(owner, repo):
+    r = _github_api(f"repos/{owner}/{repo}")
+    stats = [f"★ {_count(r.get('stargazers_count', 0))}", f"{_count(r.get('forks_count', 0))} forks"]
+    try:
+        langs = _github_api(f"repos/{owner}/{repo}/languages")
+        total = sum(langs.values())
+        top = [(name, round(100 * size / total)) for name, size in sorted(langs.items(), key=lambda kv: -kv[1])[:3]] if total else []
+        if top:
+            stats.append(", ".join(f"{name} {pct}%" for name, pct in top if pct))
+    except (PreviewError, AttributeError, TypeError):
+        pass
+    license_id = (r.get("license") or {}).get("spdx_id")
+    if license_id and license_id != "NOASSERTION":
+        stats.append(license_id)
+    if r.get("pushed_at"):
+        stats.append(f"updated {_ago(r['pushed_at'])}")
+    if r.get("archived"):
+        stats.append("archived")
+    if r.get("fork") and (r.get("parent") or {}).get("full_name"):
+        stats.append(f"fork of {r['parent']['full_name']}")
+    tail = " | " + " · ".join(stats)
+
+    about = clean(r.get("description"))
+    try:
+        parser = _FirstParagraphParser()
+        parser.feed(_github_api(f"repos/{owner}/{repo}/readme", accept="application/vnd.github.html"))
+        intro = parser.text
+    except PreviewError:
+        intro = ""
+    if intro and not _same_title(intro, about):
+        about = f"{about} — {intro}" if about else intro
+    head = f"{r.get('full_name') or f'{owner}/{repo}'}" + (f": {about}" if about else "")
+    return truncate_bytes(head, TWEET_BUDGET - len(tail.encode("utf-8"))) + tail
+
+
+def _github_issue(owner, repo, number):
+    i = _github_api(f"repos/{owner}/{repo}/issues/{number}")
+    pr = i.get("pull_request")
+    if pr:
+        kind, state = "PR", "merged" if pr.get("merged_at") else i.get("state", "?")
+    else:
+        kind = "issue"
+        state = "closed as not planned" if i.get("state_reason") == "not_planned" else i.get("state", "?")
+    date = (i.get("created_at") or "")[:10]
+    comments = i.get("comments", 0)
+    who = (i.get("user") or {}).get("login", "?")
+    meta = f" ({kind} by @{who}, {state}, {date}, {comments} comment{'s' if comments != 1 else ''})"
+    head = f"{owner}/{repo}#{number}: {clean(i.get('title'))}{meta}"
+    body = clean(re.sub(r"<!--.*?-->", "", i.get("body") or "", flags=re.S))
+    return truncate_bytes(f"{head}: {body}" if body else head, TWEET_BUDGET)
+
+
+def preview_github(url):
+    owner, repo, kind, number = GITHUB_RE.match(url).groups()
+    if number:
+        return _github_issue(owner, repo, number)
+    return _github_repo(owner, repo)
 
 
 # --------------------------------------------------------------------------- #
@@ -547,6 +684,11 @@ def _preview_other(url, full):
         raise PreviewError("only tweets get link-only previews")
     if YOUTUBE_RE.match(url):
         return preview_youtube(url)
+    if GITHUB_RE.match(url):
+        try:
+            return preview_github(url)
+        except PreviewError:
+            pass  # private repo, rate limit, ...: fall back to the page itself
     if XKCD_RE.match(url):
         try:
             return preview_xkcd(url)

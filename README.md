@@ -28,6 +28,10 @@ Chrome to preview pages that only show their content via JavaScript.
   whole thread and the replies (see `THREAD_DIR` below). Otherwise it's
   Twitter's official embed page, `platform.twitter.com/embed/Tweet.html?id=…`.
   The text goes out first because building the page takes a few more seconds.
+- **GitHub** repos: description, the README's first paragraph, stars, forks,
+  top languages, license, and last push, from the GitHub API. Issues and PRs:
+  title, kind, author, state, date, comment count, and the start of the text.
+  Other GitHub pages (files, profiles) get the generic preview.
 - **xkcd**: number, title, date, the comic's image URL (so IRCCloud shows it
   inline), and the alt text.
 - **YouTube**: title and channel, from oEmbed.
@@ -68,6 +72,7 @@ To try out previews without connecting to IRC:
 | `THREAD_DIR`           |                    | where to write thread/reply HTML pages   |
 | `THREAD_URL`           |                    | public URL that serves `THREAD_DIR`      |
 | `CHROME`               |                    | headless Chrome binary, for rendering JavaScript-only pages (see docs/deploy.md) |
+| `GITHUB_TOKEN`         |                    | optional; raises the GitHub API limit from 60 to 5000 requests/hour (a repo preview uses 3). Any token works, no scopes needed |
 | `LOG_LEVEL`            | `INFO`             | `DEBUG` logs raw IRC traffic             |
 
 Some Libera channels only allow registered nicks to join or speak. If the bot
