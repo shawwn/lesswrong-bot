@@ -10,7 +10,8 @@ log. A shell loop restarts the bot if it exits.
 | Server         | `hetzner` (SSH alias for `root@88.198.62.84`, Ubuntu 24.04) |
 | Code           | `/opt/lesswrong-bot`, owned by `deploy`                |
 | Unit           | `/etc/systemd/system/lesswrong-bot.service` (source: `deploy/lesswrong-bot.service`) |
-| Config         | `run.sh` defaults, overridden by `/etc/lesswrong-bot.env` (optional) |
+| Config         | `run.sh` defaults, overridden by `/etc/lesswrong-bot.env` (from `deploy/lesswrong-bot.env.example`) |
+| Thread pages   | written to `/srv/the.shawwn.net/t/`, served by the existing nginx site as `https://the.shawwn.net/t/<id>.html` |
 | tmux           | own server: `-L lesswrong-bot`, session `lesswrong-bot` |
 | IRC            | `sbot` on irc.libera.chat, channel `#lesswrong`, no NickServ account |
 | Source of code | https://github.com/shawwn/lesswrong-bot (the server pulls from here) |
@@ -35,7 +36,10 @@ It:
 3. creates the `deploy` user if it doesn't exist
 4. clones the repo into `/opt/lesswrong-bot`, or `git pull --ff-only` if
    already cloned
-5. enables and restarts the service, waits 15s, then prints the service state,
+5. installs `/etc/lesswrong-bot.env` from `deploy/lesswrong-bot.env.example`
+   if it doesn't exist yet. If the file sets `THREAD_DIR`, it creates that
+   directory, owned by `deploy`.
+6. enables and restarts the service, waits 15s, then prints the service state,
    the bot's cgroup, and the last log lines
 
 A healthy deploy ends with:
@@ -53,16 +57,28 @@ virtualenv or pip step.
 
 ## Configuration
 
-`run.sh` sets the defaults (`IRC_NICK=sbot`). To override them, or to add
-secrets, create `/etc/lesswrong-bot.env` on the server. It's loaded through
-`EnvironmentFile=` and isn't in git:
+`run.sh` sets the defaults (`IRC_NICK=sbot`). Per-server settings and secrets
+go in `/etc/lesswrong-bot.env` on the server. It's loaded through
+`EnvironmentFile=` and isn't in git. `deploy.sh` creates it from
+`deploy/lesswrong-bot.env.example` the first time, and never overwrites it
+afterwards. To change a setting, edit the file on the server, then run
+`systemctl restart lesswrong-bot`. See README.md for all the variables.
 
-    IRC_NICK=sbot
-    IRC_SASL_USER=sbot
-    IRC_SASL_PASS=...
+### Thread pages
 
-Then run `chmod 600 /etc/lesswrong-bot.env && systemctl restart lesswrong-bot`.
-See README.md for all the variables.
+When a linked tweet is part of a multi-post thread, the bot fetches the whole
+thread (from FxTwitter's `/2/thread/<id>`). It writes the thread as a static
+HTML page to `THREAD_DIR/<first-post-id>.html` and posts
+`THREAD_URL/<first-post-id>.html#<linked-id>` instead of the embed link. The
+page is re-rendered every time someone links any post in the thread, so it
+picks up new replies. Media is loaded straight from Twitter's CDN; nothing but
+the HTML is stored.
+
+The bot doesn't serve these pages itself; any static web server works. On
+hetzner, the existing `the.shawwn.net` nginx site (`root /srv/the.shawwn.net`,
+`autoindex on`) already serves the directory, so it needed no nginx changes.
+On a new server, either point an existing static site at `THREAD_DIR`, or
+leave `THREAD_DIR`/`THREAD_URL` unset to turn the feature off.
 
 ## Operating
 

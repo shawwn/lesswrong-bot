@@ -8,6 +8,8 @@ generic OpenGraph). It uses only the Python standard library.
   sending). Configured through environment variables listed in README.md.
 - `previews.py`: `preview(url)` returns one or more lines, or raises
   `PreviewError`. To test a link without IRC: `python3 previews.py <url>`.
+- `threads.py`: renders a whole tweet thread to a static HTML page (enabled by
+  `THREAD_DIR`/`THREAD_URL`).
 - `run.sh`: the entry point used in production.
 - `deploy/`: the systemd unit and `deploy.sh`. **Read `docs/deploy.md` before
   deploying.** It covers the server, the layout, and the pitfalls we've already

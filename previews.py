@@ -14,6 +14,8 @@ import urllib.request
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 
+import threads
+
 USER_AGENT = "Mozilla/5.0 (compatible; lesswrong-linkbot/1.0; +https://libera.chat)"
 TIMEOUT = 10
 MAX_BYTES = 1024 * 1024  # never read more than 1 MiB of any response
@@ -193,7 +195,22 @@ def preview_tweet(url):
     # Twitter's own embed page renders the tweet (with media) without a login,
     # unlike x.com. Nitter/xcancel instances come and go; this doesn't.
     text = _tweet_text(user, status_id)
-    return f"No-login link: https://platform.twitter.com/embed/Tweet.html?id={status_id}\n{text}"
+    return f"{_thread_link(status_id) or _embed_link(status_id)}\n{text}"
+
+
+def _embed_link(status_id):
+    return f"No-login link: https://platform.twitter.com/embed/Tweet.html?id={status_id}"
+
+
+def _thread_link(status_id):
+    """Publish the whole thread as a page (see threads.py) if it is one."""
+    if not threads.enabled():
+        return None
+    try:
+        url, count = threads.publish(fetch_json(f"https://api.fxtwitter.com/2/thread/{status_id}"), status_id)
+    except (PreviewError, OSError, KeyError, TypeError, ValueError):
+        return None
+    return f"Thread ({count} posts, no login): {url}" if url else None
 
 
 def _tweet_text(user, status_id):

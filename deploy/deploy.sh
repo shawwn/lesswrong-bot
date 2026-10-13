@@ -13,6 +13,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 
 echo "==> installing unit file on $HOST"
 scp -q "$HERE/lesswrong-bot.service" "$HOST:/etc/systemd/system/lesswrong-bot.service"
+scp -q "$HERE/lesswrong-bot.env.example" "$HOST:/tmp/lesswrong-bot.env.example"
 
 echo "==> provisioning and (re)starting on $HOST"
 ssh "$HOST" sh -s <<'REMOTE'
@@ -38,6 +39,17 @@ else
     sudo -u "$USER" git clone -q "$REPO" "$DIR"
 fi
 echo "deployed: $(sudo -u "$USER" git -C "$DIR" log --oneline -1)"
+
+# Per-server config. Only installed if missing, so local edits and secrets survive.
+if [ ! -e /etc/lesswrong-bot.env ]; then
+    install -m 600 /tmp/lesswrong-bot.env.example /etc/lesswrong-bot.env
+    echo "installed /etc/lesswrong-bot.env from the example; review it"
+fi
+rm -f /tmp/lesswrong-bot.env.example
+THREAD_DIR=$(sed -n 's/^THREAD_DIR=//p' /etc/lesswrong-bot.env | tail -1)
+if [ -n "$THREAD_DIR" ]; then
+    install -d -o "$USER" -g "$USER" -m 755 "$THREAD_DIR"
+fi
 
 systemctl daemon-reload
 systemctl enable -q lesswrong-bot.service
