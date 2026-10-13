@@ -6,12 +6,15 @@ Configuration is via environment variables (see README.md). Stdlib only.
 
 import asyncio
 import base64
+import importlib
 import logging
 import os
+import signal
 import ssl
 import time
 
 import previews
+import threads
 
 log = logging.getLogger("linkbot")
 
@@ -107,7 +110,27 @@ class Bot:
             except Exception:
                 pass
 
+    def reload(self):
+        """Reload the preview code in place (on SIGHUP) without reconnecting.
+        Changes to bot.py itself still need a restart."""
+        modules = [threads, previews]  # threads first: previews imports it
+        for mod in modules:
+            try:
+                with open(mod.__file__, encoding="utf-8") as f:
+                    compile(f.read(), mod.__file__, "exec")
+            except (OSError, SyntaxError) as e:
+                log.error("not reloading, %s doesn't compile: %s", mod.__file__, e)
+                return
+        for mod in modules:
+            try:
+                importlib.reload(mod)
+            except Exception:
+                log.exception("reloading %s failed", mod.__name__)
+                return
+        log.info("reloaded %s", ", ".join(m.__name__ for m in modules))
+
     async def run_forever(self):
+        asyncio.get_running_loop().add_signal_handler(signal.SIGHUP, self.reload)
         delay = 5
         while True:
             started = time.monotonic()

@@ -13,7 +13,7 @@ log. A shell loop restarts the bot if it exits.
 | Config         | `run.sh` defaults, overridden by `/etc/lesswrong-bot.env` (from `deploy/lesswrong-bot.env.example`) |
 | Thread pages   | written to `/srv/the.shawwn.net/t/`, served by the existing nginx site as `https://the.shawwn.net/t/<id>.html` |
 | tmux           | own server: `-L lesswrong-bot`, session `lesswrong-bot` |
-| IRC            | `sbot` on irc.libera.chat, channel `#lesswrong`, no NickServ account |
+| IRC            | `sbot` on irc.libera.chat, channels `#lesswrong` and `#lw-test`, no NickServ account |
 | Source of code | https://github.com/shawwn/lesswrong-bot (the server pulls from here) |
 
 ## Deploy or update
@@ -27,11 +27,12 @@ From a local checkout:
     # 2. Deploy.
     deploy/deploy.sh            # defaults to the `hetzner` SSH host
     deploy/deploy.sh otherhost  # any root-SSH Debian/Ubuntu server
+    deploy/deploy.sh --restart  # force a full restart (e.g. after editing the env file)
 
 `deploy.sh` is idempotent, so it works both on a fresh server and for updates.
 It:
 
-1. copies the unit file to `/etc/systemd/system/`
+1. installs the unit file to `/etc/systemd/system/` if it changed
 2. apt-installs `git`, `tmux`, and `python3` if any are missing
 3. creates the `deploy` user if it doesn't exist
 4. clones the repo into `/opt/lesswrong-bot`, or `git pull --ff-only` if
@@ -39,15 +40,36 @@ It:
 5. installs `/etc/lesswrong-bot.env` from `deploy/lesswrong-bot.env.example`
    if it doesn't exist yet. If the file sets `THREAD_DIR`, it creates that
    directory, owned by `deploy`.
-6. enables and restarts the service, waits 15s, then prints the service state,
-   the bot's cgroup, and the last log lines
+6. picks between a live reload and a restart (see below), then prints the
+   service state, the bot's cgroup, and the last log lines
 
-A healthy deploy ends with:
+A healthy restart ends with:
 
     active
     bot pid 12345, cgroup 0::/system.slice/lesswrong-bot.service
     ... INFO registered as sbot
     ... INFO joined #lesswrong
+    ... INFO joined #lw-test
+
+A healthy live reload ends with `... INFO reloaded threads, previews`.
+
+### Live reload vs restart
+
+A restart makes the bot quit and rejoin, which shows up in the channels, so
+`deploy.sh` avoids one when it can. On `SIGHUP`, the bot reloads `threads.py`
+and `previews.py` in place without disconnecting (`Bot.reload` in `bot.py`).
+It compiles both files first, and if either has a syntax error it logs
+`not reloading, ... doesn't compile` and keeps running the old code.
+
+`deploy.sh` sends `SIGHUP` when every changed file is preview code, docs, or
+deploy tooling. It restarts when anything else changed: `bot.py`, `run.sh`,
+the unit file, or a fresh install. Changes to `/etc/lesswrong-bot.env` aren't
+tracked in git, so after editing it, use `deploy.sh --restart` or
+`systemctl restart lesswrong-bot`. To reload by hand on the server:
+`pkill -HUP -u deploy -f '^python3 bot.py$'`.
+
+Use `#lw-test` (the bot joins it too) to try changes without spamming
+`#lesswrong`.
 
 The cgroup must be `lesswrong-bot.service`. See the shared tmux server pitfall
 below.
@@ -89,7 +111,8 @@ leave `THREAD_DIR`/`THREAD_URL` unset to turn the feature off.
 All of these run as root on the server:
 
     sudo -u deploy tmux -L lesswrong-bot a     # watch the live log; Ctrl-b d to detach
-    systemctl restart lesswrong-bot            # restart
+    pkill -HUP -u deploy -f '^python3 bot.py$' # live-reload preview code, stays connected
+    systemctl restart lesswrong-bot            # restart (quits and rejoins IRC)
     systemctl stop lesswrong-bot               # stop
     systemctl status lesswrong-bot
 

@@ -21,7 +21,10 @@ generic OpenGraph). It uses only the Python standard library.
   `shawnacs`. Push with
   `GH_TOKEN=$(gh auth token --user shawwn) git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push`.
 - Deploying: push first, then run `deploy/deploy.sh [host]` (defaults to
-  `hetzner`). The server pulls from GitHub.
+  `hetzner`). The server pulls from GitHub. If only `previews.py`/`threads.py`
+  (or docs) changed, it live-reloads with SIGHUP instead of restarting, so
+  `#lesswrong` doesn't see a quit and rejoin.
+- Testing in IRC: use `#lw-test`, not `#lesswrong`.
 - End-to-end test without Libera: point the bot at a fake local server with
   `IRC_SERVER=127.0.0.1 IRC_PORT=... IRC_TLS=0`.
 - IRC lines are limited to 512 bytes. Previews are kept under about 400 bytes
