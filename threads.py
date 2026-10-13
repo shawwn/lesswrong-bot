@@ -25,13 +25,11 @@ CSS = """
 body { margin: 0; background: #15202b; color: #e7e9ea;
        font: 17px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 main { max-width: 600px; margin: 0 auto; padding: 16px; }
-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-header img { width: 48px; height: 48px; border-radius: 50%; }
-header .name { font-weight: 700; }
 a { color: #1d9bf0; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .muted, .muted a { color: #8b98a5; }
 article { display: flex; gap: 12px; border-top: 1px solid #38444d; padding: 14px 0; }
+main > article:first-child { border-top: none; }
 article .body { flex: 1; min-width: 0; }
 .avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; background: #38444d; }
 .qavatar { width: 20px; height: 20px; border-radius: 50%; vertical-align: -4px; margin-right: 6px; }
@@ -42,7 +40,7 @@ blockquote { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #38444d; bo
 .meta { margin-top: 8px; font-size: 14px; }
 h2 { font-size: 18px; margin: 18px 0 4px; }
 .byline { margin-bottom: 2px; font-size: 15px; }
-.byline b, header .name a { color: #e7e9ea; }
+.byline b { color: #e7e9ea; }
 a.who:hover { text-decoration: none; }
 a.who:hover b { text-decoration: underline; }
 .children { margin-left: 14px; padding-left: 12px; border-left: 2px solid #38444d; }
@@ -94,6 +92,21 @@ def _who(author, avatar_cls=None):
     )
 
 
+def _visible_text(status):
+    """Tweet text as x.com shows it: without the leading @mentions that only
+    mark who a reply is to (outside raw_text.display_text_range)."""
+    text = status.get("text") or ""
+    raw = status.get("raw_text") or {}
+    try:
+        start = int((raw.get("display_text_range") or [0])[0])
+    except (TypeError, ValueError, IndexError):
+        return text
+    prefix = (raw.get("text") or "")[:start]
+    if start and re.fullmatch(r"(?:@\w{1,15}\s+)+", prefix) and text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
+
 def _date(status):
     ts = status.get("created_timestamp")
     if not ts:
@@ -131,7 +144,7 @@ def _quote(status):
         "<blockquote>"
         f'<div class="byline muted">{_who(a, "qavatar")} · '
         f'<a href="{_e(_safe_url(q.get("url")))}">{_e(_date(q))}</a></div>'
-        f'<div class="text">{_linkify(q.get("text") or "")}</div>{_media(q)}'
+        f'<div class="text">{_linkify(_visible_text(q))}</div>{_media(q)}'
         "</blockquote>"
     )
 
@@ -164,7 +177,7 @@ def _article(status, target_id):
         f'<article id="{sid}"{cls}>{_profile_link(a, _avatar(a))}<div class="body">'
         f'<div class="byline muted">{_who(a)} · '
         f'<a href="{_e(_safe_url(status.get("url")))}">{_e(_date(status))}</a></div>'
-        f'<div class="text">{_linkify(status.get("text") or "")}</div>'
+        f'<div class="text">{_linkify(_visible_text(status))}</div>'
         f"{_media(status)}{_quote(status)}"
         f'<div class="meta muted">{status.get("replies", 0):,} replies · '
         f'{status.get("reposts", 0):,} reposts · {status.get("likes", 0):,} likes</div>'
@@ -245,10 +258,6 @@ def render(data, target_id, conv=None):
 <style>{CSS}</style>
 </head>
 <body><main>
-<header>
-{_profile_link(author, f'<img src="{_e(avatar)}" alt="">') if avatar else ""}
-<div><div class="name">{_profile_link(author, _e(name))}</div><div class="muted">{_profile_link(author, "@" + _e(handle))}{f" · {len(real)} posts" if len(real) > 1 else ""}</div></div>
-</header>
 {"".join(body)}
 <footer class="muted">Copied from <a href="{_e(_safe_url(first.get("url")))}">x.com</a>
 via <a href="https://github.com/FxEmbed/FxEmbed">FxTwitter</a> at {now}.
