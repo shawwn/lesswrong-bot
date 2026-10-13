@@ -243,18 +243,21 @@ class Bot:
             asyncio.create_task(self.post_preview(target, url, sender, full))
 
     async def post_preview(self, target, url, sender, full):
-        try:
-            text = await asyncio.to_thread(previews.preview, url, sender, full)
-        except previews.PreviewError as e:
-            log.info("no preview for %s: %s", url, e)
-            return
-        except Exception:
-            log.exception("preview crashed for %s", url)
-            return
-        for line in text.splitlines():
-            if line.strip():
-                log.info("preview %s -> %s", url, line)
-                self.say(target, line)
+        # Post each step as soon as it's ready (e.g. tweet text before the
+        # slower thread page link).
+        for step in previews.preview_steps(url, sender, full):
+            try:
+                text = await asyncio.to_thread(step)
+            except previews.PreviewError as e:
+                log.info("no preview for %s: %s", url, e)
+                return
+            except Exception:
+                log.exception("preview crashed for %s", url)
+                return
+            for line in text.splitlines():
+                if line.strip():
+                    log.info("preview %s -> %s", url, line)
+                    self.say(target, line)
 
 
 def main():

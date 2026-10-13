@@ -190,17 +190,29 @@ def _pack_lines(words, limit=TWEET_BUDGET):
     return lines
 
 
-def preview_tweet(url, nick=None, full=True):
+def tweet_steps(url, nick=None, full=True):
+    """Preview a tweet as a list of steps (zero-argument functions, each
+    returning text), so the bot can post each one as soon as it's ready.
+
+    Full: the tweet text first (one fast request), then the no-login link,
+    which may need two more requests to build the thread page. Link-only:
+    just the link, after checking the tweet exists."""
     m = TWEET_RE.match(url)
     user, status_id = m.group(1), m.group(2)
-    # Twitter's own embed page renders the tweet (with media) without a login,
-    # unlike x.com. Nitter/xcancel instances come and go; this doesn't.
-    text = _tweet_text(user, status_id)
-    # Like Robomot's "Alternate version of <nick>'s link: ...".
-    link = _thread_link(status_id) or f"https://platform.twitter.com/embed/Tweet.html?id={status_id}"
-    whose = f"{nick}'s" if nick else "this"
-    line = f"No-login version of {whose} link: {link}"
-    return f"{line}\n{text}" if full else line
+
+    def link():
+        # Like Robomot's "Alternate version of <nick>'s link: ...". Twitter's
+        # own embed page shows the tweet without a login, unlike x.com.
+        url = _thread_link(status_id) or f"https://platform.twitter.com/embed/Tweet.html?id={status_id}"
+        whose = f"{nick}'s" if nick else "this"
+        return f"No-login version of {whose} link: {url}"
+
+    def text():
+        return _tweet_text(user, status_id)
+
+    if full:
+        return [text, link]
+    return [lambda: (text(), link())[1]]
 
 
 def _thread_link(status_id):
@@ -379,12 +391,25 @@ def preview_generic(url):
 # Dispatch
 # --------------------------------------------------------------------------- #
 
-def preview(url, nick=None, full=True):
-    """Return a preview for url (one or more lines), or raise PreviewError.
+def preview_steps(url, nick=None, full=True):
+    """Return a list of steps (zero-argument functions returning text, or
+    raising PreviewError) that together make the preview for url. Run them in
+    order and post each result; stop at the first error.
+
     nick is who posted the link, for wording like "<nick>'s link". With
     full=False, only tweets get anything: just the no-login link line."""
     if TWEET_RE.match(url):
-        return preview_tweet(url, nick, full)
+        return tweet_steps(url, nick, full)
+    return [lambda: _preview_other(url, full)]
+
+
+def preview(url, nick=None, full=True):
+    """The whole preview for url as one string (lines joined), or raise
+    PreviewError."""
+    return "\n".join(step() for step in preview_steps(url, nick, full))
+
+
+def _preview_other(url, full):
     if not full:
         raise PreviewError("only tweets get link-only previews")
     if YOUTUBE_RE.match(url):

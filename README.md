@@ -3,10 +3,10 @@
 IRC bot that joins `#lesswrong` on Libera.Chat. When `shawwwn` posts a link,
 it replies with a preview in Robomot's style:
 
-    No-login version of shawwwn's link: https://the.shawwn.net/t/2110024474938790330.html
     Ravi Gupta (@GuptaRK22, 2026-10-13): "Today we announced an agreement to acquire Bumble. / Over the past six months, …"
+    No-login version of shawwwn's link: https://the.shawwn.net/t/2110024474938790330.html
 
-When anyone else posts a tweet link, it replies with just the first line,
+When anyone else posts a tweet link, it replies with just the second line,
 since Robomot already previews the tweet itself. It never replies to anyone
 else's other links, and it ignores Robomot entirely.
 
@@ -15,13 +15,14 @@ It uses only the Python standard library (3.9+).
 ## Previews
 
 - **Twitter / X** (also fxtwitter, vxtwitter, fixupx, xcancel, nitter): fetched
-  through the public FxTwitter API. Posts a no-login link first. If the tweet
-  is part of a thread or has replies, that's a page the bot writes with the
-  whole thread and the replies (see `THREAD_DIR` below). Otherwise it's Twitter's official embed page,
-  `platform.twitter.com/embed/Tweet.html?id=…`. Then it
-  shows the author, date, and text with newlines joined by ` / `, the quoted
-  tweet, and direct links to any photos, videos, or GIFs. If the links don't
-  fit on the same line, they go on the next one.
+  through the public FxTwitter API. First it shows the author, date, and text
+  with newlines joined by ` / `, the quoted tweet, and direct links to any
+  photos, videos, or GIFs. If the links don't fit on the same line, they go
+  on the next one. Then, once it's ready, a no-login link. If the tweet is
+  part of a thread or has replies, that's a page the bot writes with the
+  whole thread and the replies (see `THREAD_DIR` below). Otherwise it's
+  Twitter's official embed page, `platform.twitter.com/embed/Tweet.html?id=…`.
+  The text goes out first because building the page takes a few more seconds.
 - **xkcd**: number, title, date, the comic's image URL (so IRCCloud shows it
   inline), and the alt text.
 - **YouTube**: title and channel, from oEmbed.
