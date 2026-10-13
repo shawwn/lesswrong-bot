@@ -11,7 +11,9 @@ It uses only the Python standard library (3.9+).
 
 - **Twitter / X** (also fxtwitter, vxtwitter, fixupx, xcancel, nitter): fetched
   through the public FxTwitter API. Shows the author, date, and text with
-  newlines joined by ` / `, plus any media count and the quoted tweet.
+  newlines joined by ` / `, the quoted tweet, and direct links to any
+  photos, videos, or GIFs. If the links don't fit on the same line, they go on
+  the next one.
 - **YouTube**: title and channel, from oEmbed.
 - **Wikipedia**: the lead summary, from the REST API.
 - **Everything else**: OpenGraph / Twitter-card title and description,

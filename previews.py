@@ -152,29 +152,38 @@ def human_size(n):
 # Twitter / X  (via the public FxTwitter API)
 # --------------------------------------------------------------------------- #
 
-def _format_tweet(t, budget=400):
+TWEET_BUDGET = 400  # bytes per IRC line
+MIN_TWEET_TEXT = 150  # below this, media links move to their own line
+
+
+def _media_links(t):
+    """Direct URLs to a tweet's photos, videos, and GIFs."""
+    media = t.get("media") or {}
+    return [m["url"] for m in media.get("all") or [] if m.get("url")]
+
+
+def _format_tweet(t, budget):
     author = t.get("author") or {}
     name = clean(author.get("name")) or "?"
     handle = author.get("screen_name") or "?"
     ts = t.get("created_timestamp")
     date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else "?"
     text = slashify(t.get("text") or "")
-
-    media = t.get("media") or {}
-    extras = []
-    if media.get("photos"):
-        n = len(media["photos"])
-        extras.append(f"{n} image{'s' if n != 1 else ''}")
-    if media.get("videos"):
-        n = len(media["videos"])
-        extras.append(f"{n} video{'s' if n != 1 else ''}")
-    if t.get("poll"):
-        extras.append("poll")
-    suffix = f" [{', '.join(extras)}]" if extras else ""
+    suffix = " [poll]" if t.get("poll") else ""
 
     head = f"{name} (@{handle}, {date}): "
     text = truncate_bytes(text, budget - len((head + '""' + suffix).encode("utf-8")))
     return f'{head}"{text}"{suffix}'
+
+
+def _pack_lines(words, limit=TWEET_BUDGET):
+    lines = []
+    for w in words:
+        if lines and len((lines[-1] + " " + w).encode("utf-8")) <= limit:
+            lines[-1] += " " + w
+        else:
+            lines.append(w)
+    return lines
 
 
 def preview_tweet(url):
@@ -185,10 +194,25 @@ def preview_tweet(url):
     if not tweet:
         raise PreviewError(f"fxtwitter: {data.get('message') or 'no tweet'}")
     quote = tweet.get("quote")
+    links = _media_links(tweet) + (_media_links(quote) if quote else [])
+
+    # Append media links to the tweet line if that still leaves room for a
+    # reasonable amount of text; otherwise put them on following lines.
+    link_str = "".join(" " + link for link in links)
+    budget = TWEET_BUDGET - len(link_str.encode("utf-8"))
+    if budget >= MIN_TWEET_TEXT:
+        extra_lines = []
+    else:
+        budget, link_str = TWEET_BUDGET, ""
+        extra_lines = _pack_lines(links)
+
     if quote:
-        return _format_tweet(tweet, 220) + " | Quoting " + _format_tweet(quote, 170)
-    return _format_tweet(tweet)
-    return out
+        sep = " | Quoting "
+        budget -= len(sep)
+        line = _format_tweet(tweet, budget * 4 // 7) + sep + _format_tweet(quote, budget * 3 // 7)
+    else:
+        line = _format_tweet(tweet, budget)
+    return "\n".join([line + link_str] + extra_lines)
 
 
 # --------------------------------------------------------------------------- #
@@ -299,7 +323,7 @@ def preview_generic(url):
 # --------------------------------------------------------------------------- #
 
 def preview(url):
-    """Return a one-line preview for url, or raise PreviewError."""
+    """Return a preview for url (one or more lines), or raise PreviewError."""
     if TWEET_RE.match(url):
         return preview_tweet(url)
     if YOUTUBE_RE.match(url):

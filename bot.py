@@ -197,9 +197,10 @@ class Bot:
         except Exception:
             log.exception("preview crashed for %s", url)
             return
-        if text:
-            log.info("preview %s -> %s", url, text)
-            self.say(target, text)
+        for line in text.splitlines():
+            if line.strip():
+                log.info("preview %s -> %s", url, line)
+                self.say(target, line)
 
 
 def main():
