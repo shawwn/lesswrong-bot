@@ -247,15 +247,8 @@ def render(data, target_id, conv=None):
     posts = data.get("thread") or [data["status"]]
     real = [p for p in posts if _is_real(p)]
     first = real[0] if real else data["status"]
-    author = first.get("author") or data.get("author") or {}
-    name, handle = author.get("name") or "?", author.get("screen_name") or "?"
-    title = f"Thread by {name} (@{handle}), {len(real)} posts"
-    desc = " ".join((first.get("text") or "").split())[:300]
-    avatar = _safe_url(author.get("avatar_url"))
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     replies_html, n_replies = _replies(conv or {}, target_id, {p["id"] for p in real})
-    if len(real) < 2:
-        title = f"Post by {name} (@{handle}) and replies"
     # The author's thread continuation reads first (as on x.com), then replies.
     body = [_article(p, target_id) for p in posts] + [replies_html]
 
@@ -266,11 +259,8 @@ def render(data, target_id, conv=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- video.twimg.com returns 403 to requests with a foreign Referer. -->
 <meta name="referrer" content="no-referrer">
-<title>{_e(title)}</title>
-<meta property="og:title" content="{_e(title)}">
-<meta name="description" content="{_e(desc)}">
-<meta property="og:description" content="{_e(desc)}">
-{f'<meta property="og:image" content="{_e(avatar)}">' if avatar else ""}
+<!-- No title or preview tags: the bot already posts the tweet text, and other link bots would repeat it. -->
+<title></title>
 <style>{CSS}</style>
 </head>
 <body><main>
