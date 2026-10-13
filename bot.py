@@ -186,11 +186,11 @@ class Bot:
             if key in self.seen:
                 continue
             self.seen[key] = now
-            asyncio.create_task(self.post_preview(target, url))
+            asyncio.create_task(self.post_preview(target, url, sender))
 
-    async def post_preview(self, target, url):
+    async def post_preview(self, target, url, sender):
         try:
-            text = await asyncio.to_thread(previews.preview, url)
+            text = await asyncio.to_thread(previews.preview, url, sender)
         except previews.PreviewError as e:
             log.info("no preview for %s: %s", url, e)
             return

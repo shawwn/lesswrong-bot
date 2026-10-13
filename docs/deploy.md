@@ -70,8 +70,9 @@ For every linked tweet, the bot fetches the author's self-thread (FxTwitter
 `/2/thread/<id>`) and the first page of replies to the linked post
 (`/2/conversation/<id>`, about 40 replies, shown as a nested tree under it).
 If there's a multi-post thread or any replies, it writes a static HTML page to
-`THREAD_DIR/<linked-id>.html`. It then posts `THREAD_URL/<linked-id>.html#<linked-id>`
-instead of the embed link. The page is named after the linked post because the
+`THREAD_DIR/<linked-id>.html`. It then posts
+`No-login version of <nick>'s link: THREAD_URL/<linked-id>.html` instead of
+the embed link. The page is named after the linked post because the
 replies shown depend on which post was linked. The page is re-rendered every
 time the tweet is linked, so it picks up new replies. Media is loaded straight
 from Twitter's CDN; nothing but the HTML is stored. If building the page fails

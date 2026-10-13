@@ -190,17 +190,16 @@ def _pack_lines(words, limit=TWEET_BUDGET):
     return lines
 
 
-def preview_tweet(url):
+def preview_tweet(url, nick=None):
     m = TWEET_RE.match(url)
     user, status_id = m.group(1), m.group(2)
     # Twitter's own embed page renders the tweet (with media) without a login,
     # unlike x.com. Nitter/xcancel instances come and go; this doesn't.
     text = _tweet_text(user, status_id)
-    return f"{_thread_link(status_id) or _embed_link(status_id)}\n{text}"
-
-
-def _embed_link(status_id):
-    return f"No-login link: https://platform.twitter.com/embed/Tweet.html?id={status_id}"
+    # Like Robomot's "Alternate version of <nick>'s link: ...".
+    link = _thread_link(status_id) or f"https://platform.twitter.com/embed/Tweet.html?id={status_id}"
+    whose = f"{nick}'s" if nick else "this"
+    return f"No-login version of {whose} link: {link}\n{text}"
 
 
 def _thread_link(status_id):
@@ -213,17 +212,12 @@ def _thread_link(status_id):
             conv = fetch_json(f"https://api.fxtwitter.com/2/conversation/{status_id}")
         except PreviewError:
             conv = None  # still worth publishing the thread alone
-        url, posts, replies = threads.publish(thread, status_id, conv)
+        url, _, _ = threads.publish(thread, status_id, conv)
     except Exception:
         # The page is a bonus; on any failure fall back to the embed link.
         logging.getLogger(__name__).exception("thread page failed for %s", status_id)
         return None
-    if not url:
-        return None
-    if posts > 1:
-        counts = f"{posts} posts" + (f", {replies} replies" if replies else "")
-        return f"Thread ({counts}, no login): {url}"
-    return f"Replies ({replies}, no login): {url}"
+    return url
 
 
 def _tweet_text(user, status_id):
@@ -384,10 +378,11 @@ def preview_generic(url):
 # Dispatch
 # --------------------------------------------------------------------------- #
 
-def preview(url):
-    """Return a preview for url (one or more lines), or raise PreviewError."""
+def preview(url, nick=None):
+    """Return a preview for url (one or more lines), or raise PreviewError.
+    nick is who posted the link, for wording like "<nick>'s link"."""
     if TWEET_RE.match(url):
-        return preview_tweet(url)
+        return preview_tweet(url, nick)
     if YOUTUBE_RE.match(url):
         return preview_youtube(url)
     if XKCD_RE.match(url):

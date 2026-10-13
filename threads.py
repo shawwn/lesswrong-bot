@@ -253,6 +253,7 @@ def render(data, target_id, conv=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_e(title)}</title>
 <meta property="og:title" content="{_e(title)}">
+<meta name="description" content="{_e(desc)}">
 <meta property="og:description" content="{_e(desc)}">
 {f'<meta property="og:image" content="{_e(avatar)}">' if avatar else ""}
 <style>{CSS}</style>
@@ -289,4 +290,4 @@ def publish(data, target_id, conv=None):
     except BaseException:
         os.unlink(tmp)
         raise
-    return f"{THREAD_URL}/{name}#{target_id}", posts, replies
+    return f"{THREAD_URL}/{name}", posts, replies
