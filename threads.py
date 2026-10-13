@@ -264,6 +264,8 @@ def render(data, target_id, conv=None):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- video.twimg.com returns 403 to requests with a foreign Referer. -->
+<meta name="referrer" content="no-referrer">
 <title>{_e(title)}</title>
 <meta property="og:title" content="{_e(title)}">
 <meta name="description" content="{_e(desc)}">
