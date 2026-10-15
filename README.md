@@ -6,8 +6,8 @@ it replies with a preview in Robomot's style:
     Ravi Gupta (@GuptaRK22, 2026-10-13): "Today we announced an agreement to acquire Bumble. / Over the past six months, …"
     No-login version of shawwwn's link: https://the.shawwn.net/t/2110024474938790330.html
 
-When anyone else posts a tweet link, it replies with just the second line,
-since Robomot already previews the tweet itself. For anyone else's other
+When anyone else posts a tweet link, it builds the no-login page but posts
+nothing, since Robomot already previews the tweet. For anyone else's other
 links, it stays silent unless the page only shows its content via
 JavaScript (so other preview bots see just the site-wide title). In that case
 it renders the page, waits for Robomot and feepbot to reply (up to 20s), and

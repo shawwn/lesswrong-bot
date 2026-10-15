@@ -256,8 +256,12 @@ class Bot:
             if key in self.seen:
                 continue
             self.seen[key] = now
-            if full or previews.TWEET_RE.match(url):
+            if full:
                 asyncio.create_task(self.post_preview(target, url, sender, full))
+            elif previews.TWEET_RE.match(url):
+                # Other people's tweets: still build the no-login page, but
+                # don't post the link (it duplicated Robomot's line).
+                asyncio.create_task(self.post_preview(target, url, sender, full, quiet=True))
             elif sender.lower() not in RIVAL_NICKS:
                 asyncio.create_task(self.post_if_better(target, url, time.monotonic()))
 
@@ -289,9 +293,10 @@ class Bot:
         log.info("better preview %s -> %s", url, text)
         self.say(target, text)
 
-    async def post_preview(self, target, url, sender, full):
+    async def post_preview(self, target, url, sender, full, quiet=False):
         # Post each step as soon as it's ready (e.g. tweet text before the
-        # slower thread page link).
+        # slower thread page link). quiet: run the steps (which build any
+        # thread page) but post nothing.
         for step in previews.preview_steps(url, sender, full):
             try:
                 text = await asyncio.to_thread(step)
@@ -303,8 +308,9 @@ class Bot:
                 return
             for line in text.splitlines():
                 if line.strip():
-                    log.info("preview %s -> %s", url, line)
-                    self.say(target, line)
+                    log.info("%s %s -> %s", "built, not posting" if quiet else "preview", url, line)
+                    if not quiet:
+                        self.say(target, line)
 
 
 def main():
