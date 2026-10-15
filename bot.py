@@ -72,7 +72,7 @@ DUPLICATE_WINDOW = 600  # seconds; don't re-preview the same URL in the same cha
 # A PRIVMSG line is capped at 512 bytes including our own ":nick!user@host"
 # prefix as relayed to others; leave generous room for it.
 MAX_PAYLOAD_BYTES = 400
-SEND_BURST = 4  # lines sent back-to-back before throttling to 1/second
+SEND_BURST = 6  # lines sent back-to-back before throttling to 1/second
 
 
 def parse_line(line):
