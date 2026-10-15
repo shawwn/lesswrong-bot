@@ -37,7 +37,7 @@ Chrome to preview pages that only show their content via JavaScript.
 - **YouTube**: title and channel, from oEmbed.
 - **Wikipedia**: the lead summary, from the REST API.
 - **Everything else**: OpenGraph / Twitter-card title and description,
-  falling back to `<title>`. Non-HTML links show the content type and size.
+  falling back to `<title>`. Non-HTML links (images, PDFs, ...) get no reply.
 
 The bot won't fetch private, loopback, or link-local addresses, and it checks
 every redirect hop the same way. It reads at most 1 MiB of any response,

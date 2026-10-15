@@ -156,14 +156,6 @@ def truncate_bytes(text, limit):
     return cut.rstrip() + "…"
 
 
-def human_size(n):
-    n = float(n)
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-
-
 # --------------------------------------------------------------------------- #
 # Twitter / X  (via the public FxTwitter API)
 # --------------------------------------------------------------------------- #
@@ -586,12 +578,13 @@ def _decode(body, charset):
 
 
 def _static_metadata(url):
-    """Fetch url and return (final_url, title, desc, site, needs_render), or a
-    string preview for non-HTML responses."""
-    final_url, ctype, charset, body, length = fetch(url)
+    """Fetch url and return (final_url, title, desc, site, needs_render).
+    Raises PreviewError for non-HTML (images, PDFs, ...): a bare
+    "[image/png, 770.9 KB]" isn't worth a message, and IRCCloud shows images
+    inline anyway."""
+    final_url, ctype, charset, body, _ = fetch(url)
     if "html" not in ctype:
-        size = f", {human_size(length)}" if length and length.isdigit() else ""
-        return f"[{ctype}{size}]"
+        raise PreviewError(f"not HTML ({ctype})")
 
     parser = _MetaParser()
     try:
@@ -614,10 +607,7 @@ def rendered_preview(url):
     Used to decide whether to speak up for people other than WATCH_NICKS."""
     if TWEET_RE.match(url):
         return None
-    static = _static_metadata(url)
-    if isinstance(static, str):
-        return None
-    final_url, title, _, site, needs_render = static
+    final_url, title, _, site, needs_render = _static_metadata(url)
     if not needs_render:
         return None  # ordinary page: the other bots see the same metadata we do
     rendered = _rendered_preview(final_url, title, site)
@@ -634,10 +624,7 @@ def _same_title(a, b):
 
 
 def preview_generic(url):
-    static = _static_metadata(url)
-    if isinstance(static, str):
-        return static
-    final_url, title, desc, site, needs_render = static
+    final_url, title, desc, site, needs_render = _static_metadata(url)
 
     # Only render pages whose HTML has no metadata, or only site-wide metadata.
     # Elsewhere rendering is slower and often worse (bot-check pages).
