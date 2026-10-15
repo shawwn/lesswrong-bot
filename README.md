@@ -23,10 +23,10 @@ Chrome to preview pages that only show their content via JavaScript.
   through the public FxTwitter API. Like Robomot, it first posts an "Alternate
   version" link via `xc-redirect.alwaysdata.net` (Robomot's redirector to a
   working Nitter/xcancel mirror), then the author, date, and text with
-  newlines joined by ` / `, the quoted tweet, and direct links to any photos,
-  videos, or GIFs. If the links don't fit on the same line, they go on the
-  next one. Both lines go out together as soon as the tweet is fetched
-  (about 0.3s). For every tweet link (anyone's), the bot also builds a
+  newlines joined by ` / ` and the quoted tweet. Direct links to any photos,
+  videos, or GIFs (the quoted tweet's too) follow, one per line, numbered
+  `[1] <url>`, `[2] <url>`, ... so they line up. All the lines go out together
+  as soon as the tweet is fetched (about 0.3s). For every tweet link (anyone's), the bot also builds a
   no-login page with the whole thread and replies (see `THREAD_DIR` below),
   in the background so it never delays the preview. That page's link isn't
   posted.
@@ -43,7 +43,7 @@ Chrome to preview pages that only show their content via JavaScript.
 
 The bot won't fetch private, loopback, or link-local addresses, and it checks
 every redirect hop the same way. It reads at most 1 MiB of any response,
-previews at most 3 URLs per message, and sends at most 6 lines at once,
+previews at most 3 URLs per message, and sends at most 10 lines at once,
 then one line per second.
 
 ## Running

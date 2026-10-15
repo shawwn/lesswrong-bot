@@ -71,7 +71,7 @@ MAX_URLS_PER_MESSAGE = int(os.environ.get("MAX_URLS_PER_MESSAGE", "3"))
 # A PRIVMSG line is capped at 512 bytes including our own ":nick!user@host"
 # prefix as relayed to others; leave generous room for it.
 MAX_PAYLOAD_BYTES = 400
-SEND_BURST = 6  # lines sent back-to-back before throttling to 1/second
+SEND_BURST = 10  # lines sent back-to-back before throttling to 1/second
 
 
 def parse_line(line):

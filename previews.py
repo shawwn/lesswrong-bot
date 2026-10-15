@@ -161,7 +161,6 @@ def truncate_bytes(text, limit):
 # --------------------------------------------------------------------------- #
 
 TWEET_BUDGET = 400  # bytes per IRC line
-MIN_TWEET_TEXT = 150  # below this, media links move to their own line
 
 
 def _media_links(t):
@@ -184,17 +183,6 @@ def _format_tweet(t, budget):
     return f'{head}"{text}"{suffix}'
 
 
-MEDIA_MARK = "[+] "  # before each media link, so adjacent URLs are easy to tell apart
-
-
-def _pack_lines(words, limit=TWEET_BUDGET, sep=" "):
-    lines = []
-    for w in words:
-        if lines and len((lines[-1] + sep + w).encode("utf-8")) <= limit:
-            lines[-1] += sep + w
-        else:
-            lines.append(w)
-    return lines
 
 
 def tweet_steps(url, nick=None, full=True):
@@ -255,14 +243,9 @@ def _tweet_text(user, status_id):
 
     # Append media links to the tweet line if that still leaves room for a
     # reasonable amount of text; otherwise put them on following lines.
-    links = [MEDIA_MARK + link for link in links]
-    link_str = "".join(" " + link for link in links)
-    budget = TWEET_BUDGET - len(link_str.encode("utf-8"))
-    if budget >= MIN_TWEET_TEXT:
-        extra_lines = []
-    else:
-        budget, link_str = TWEET_BUDGET, ""
-        extra_lines = _pack_lines(links)
+    # Each media link on its own numbered line, so they line up.
+    media_lines = [f"[{i}] {link}" for i, link in enumerate(links, 1)]
+    budget = TWEET_BUDGET
 
     if quote:
         sep = " | Quoting "
@@ -270,7 +253,7 @@ def _tweet_text(user, status_id):
         line = _format_tweet(tweet, budget * 4 // 7) + sep + _format_tweet(quote, budget * 3 // 7)
     else:
         line = _format_tweet(tweet, budget)
-    return "\n".join([line + link_str] + extra_lines)
+    return "\n".join([line] + media_lines)
 
 
 # --------------------------------------------------------------------------- #
