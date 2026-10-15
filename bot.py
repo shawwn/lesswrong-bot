@@ -72,6 +72,7 @@ DUPLICATE_WINDOW = 600  # seconds; don't re-preview the same URL in the same cha
 # A PRIVMSG line is capped at 512 bytes including our own ":nick!user@host"
 # prefix as relayed to others; leave generous room for it.
 MAX_PAYLOAD_BYTES = 400
+SEND_BURST = 4  # lines sent back-to-back before throttling to 1/second
 
 
 def parse_line(line):
@@ -106,12 +107,21 @@ class Bot:
         self.writer.write((line + "\r\n").encode("utf-8"))
 
     async def sender(self):
-        """Drain the outgoing PRIVMSG queue at a flood-safe rate."""
+        """Drain the outgoing PRIVMSG queue at a flood-safe rate: a burst of
+        up to SEND_BURST lines (so a two-line preview arrives together, like
+        Robomot's), then one line per second."""
+        tokens, last = SEND_BURST, time.monotonic()
         while True:
             line = await self.send_queue.get()
+            now = time.monotonic()
+            tokens = min(SEND_BURST, tokens + (now - last))
+            last = now
+            if tokens < 1:
+                await asyncio.sleep(1 - tokens)
+                tokens, last = 1, time.monotonic()
+            tokens -= 1
             self.raw(line)
             await self.writer.drain()
-            await asyncio.sleep(1.0)
 
     def say(self, target, text):
         self.send_queue.put_nowait(f"PRIVMSG {target} :{previews.truncate_bytes(text, MAX_PAYLOAD_BYTES)}")
@@ -256,13 +266,14 @@ class Bot:
             if key in self.seen:
                 continue
             self.seen[key] = now
+            is_tweet = previews.TWEET_RE.match(url)
+            if is_tweet:
+                # Everyone's tweets get a no-login page, built in parallel so
+                # it never delays the preview. Its link isn't posted.
+                asyncio.create_task(self.build_tweet_page(url))
             if full:
                 asyncio.create_task(self.post_preview(target, url, sender, full))
-            elif previews.TWEET_RE.match(url):
-                # Other people's tweets: still build the no-login page, but
-                # don't post the link (it duplicated Robomot's line).
-                asyncio.create_task(self.post_preview(target, url, sender, full, quiet=True))
-            elif sender.lower() not in RIVAL_NICKS:
+            elif not is_tweet and sender.lower() not in RIVAL_NICKS:
                 asyncio.create_task(self.post_if_better(target, url, time.monotonic()))
 
     async def post_if_better(self, target, url, since):
@@ -293,10 +304,17 @@ class Bot:
         log.info("better preview %s -> %s", url, text)
         self.say(target, text)
 
-    async def post_preview(self, target, url, sender, full, quiet=False):
-        # Post each step as soon as it's ready (e.g. tweet text before the
-        # slower thread page link). quiet: run the steps (which build any
-        # thread page) but post nothing.
+    async def build_tweet_page(self, url):
+        try:
+            page = await asyncio.to_thread(previews.build_tweet_page, url)
+        except Exception:
+            log.exception("building tweet page failed for %s", url)
+            return
+        if page:
+            log.info("built %s -> %s", url, page)
+
+    async def post_preview(self, target, url, sender, full):
+        # Post each step as soon as it's ready.
         for step in previews.preview_steps(url, sender, full):
             try:
                 text = await asyncio.to_thread(step)
@@ -308,9 +326,8 @@ class Bot:
                 return
             for line in text.splitlines():
                 if line.strip():
-                    log.info("%s %s -> %s", "built, not posting" if quiet else "preview", url, line)
-                    if not quiet:
-                        self.say(target, line)
+                    log.info("preview %s -> %s", url, line)
+                    self.say(target, line)
 
 
 def main():

@@ -198,25 +198,30 @@ def tweet_steps(url, nick=None, full=True):
     """Preview a tweet as a list of steps (zero-argument functions, each
     returning text), so the bot can post each one as soon as it's ready.
 
-    Full: the tweet text first (one fast request), then the no-login link,
-    which may need two more requests to build the thread page. Link-only:
-    just the link, after checking the tweet exists."""
+    Full: one step, Robomot-style: "Alternate version of <nick>’s link: ..."
+    then the tweet text. The alternate link needs no request, but it's posted
+    with the text (one fast request) so a missing tweet gets no dead link.
+    Link-only (full=False): nothing; Robomot already covers other people.
+    The no-login thread page is built separately (build_tweet_page) so it
+    never delays this."""
+    if not full:
+        return []
     m = TWEET_RE.match(url)
     user, status_id = m.group(1), m.group(2)
 
-    def link():
-        # Like Robomot's "Alternate version of <nick>'s link: ...". Twitter's
-        # own embed page shows the tweet without a login, unlike x.com.
-        url = _thread_link(status_id) or f"https://platform.twitter.com/embed/Tweet.html?id={status_id}"
-        whose = f"{nick}'s" if nick else "this"
-        return f"No-login version of {whose} link: {url}"
+    def alternate_and_text():
+        text = _tweet_text(user, status_id)
+        whose = f"{nick}’s" if nick else "this"
+        return f"Alternate version of {whose} link: https://xc-redirect.alwaysdata.net/{user}/status/{status_id}\n{text}"
 
-    def text():
-        return _tweet_text(user, status_id)
+    return [alternate_and_text]
 
-    if full:
-        return [text, link]
-    return [lambda: (text(), link())[1]]
+
+def build_tweet_page(url):
+    """Build (or refresh) the no-login thread page for a tweet link. Returns
+    its URL, or None if there's no thread/replies or pages are disabled."""
+    m = TWEET_RE.match(url)
+    return _thread_link(m.group(2)) if m else None
 
 
 def _thread_link(status_id):

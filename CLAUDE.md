@@ -2,9 +2,12 @@
 
 IRC bot for #lesswrong on Libera.Chat. When `shawwwn` posts links, it replies
 with Robomot-style one-line previews (tweets, xkcd, YouTube, Wikipedia,
-generic OpenGraph). For anyone else's tweet links it builds the no-login
-thread page but posts nothing (the "No-login version of <nick>'s link" line
-duplicated Robomot and annoyed people). It stays silent on their other
+generic OpenGraph). Tweets get Robomot's format: "Alternate version of
+<nick>’s link: https://xc-redirect.alwaysdata.net/..." then the tweet text,
+both sent together. For anyone else's tweet links it posts nothing (an earlier
+"No-login version of <nick>'s link" line duplicated Robomot and annoyed
+people). Every tweet link still gets a no-login thread page built in the
+background (never delaying the preview, never posted). It stays silent on their other
 links, except JavaScript-only pages where rendering finds a real headline that
 Robomot and feepbot (`RIVAL_NICKS`) don't show; then it waits for them and
 posts if neither got it. Anyone writing `%sbot` (`TRIGGER`) gets full previews.

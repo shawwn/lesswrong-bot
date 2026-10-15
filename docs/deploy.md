@@ -92,13 +92,15 @@ For every linked tweet, the bot fetches the author's self-thread (FxTwitter
 `/2/thread/<id>`) and the first page of replies to the linked post
 (`/2/conversation/<id>`, about 40 replies, shown as a nested tree under it).
 If there's a multi-post thread or any replies, it writes a static HTML page to
-`THREAD_DIR/<linked-id>.html`. It then posts
-`No-login version of <nick>'s link: THREAD_URL/<linked-id>.html` instead of
-the embed link. The page is named after the linked post because the
-replies shown depend on which post was linked. The page is re-rendered every
-time the tweet is linked, so it picks up new replies. Media is loaded straight
-from Twitter's CDN; nothing but the HTML is stored. If building the page fails
-for any reason, the bot logs it and falls back to the embed link.
+`THREAD_DIR/<linked-id>.html`, in the background, for anyone's tweet links.
+The link to it is no longer posted (2026-10-15): the "No-login version of
+<nick>'s link" line duplicated Robomot and annoyed the channel. sbot now posts
+Robomot's own format, "Alternate version of <nick>’s link:
+https://xc-redirect.alwaysdata.net/<user>/status/<id>", for shawwwn/%sbot only.
+The page is named after the linked post because the replies shown depend on
+which post was linked. It's re-rendered every time the tweet is linked, so it
+picks up new replies. Media is loaded straight from Twitter's CDN; nothing but
+the HTML is stored. If building the page fails, the bot just logs it.
 
 The bot doesn't serve these pages itself; any static web server works. On
 hetzner, the existing `the.shawwn.net` nginx site (`root /srv/the.shawwn.net`,
