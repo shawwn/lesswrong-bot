@@ -67,7 +67,6 @@ def unrelay(sender, text):
     m = _RELAY_RE.match(_FORMATTING_RE.sub("", text))
     return (m.group(1), m.group(2)) if m else (sender, text)
 MAX_URLS_PER_MESSAGE = int(os.environ.get("MAX_URLS_PER_MESSAGE", "3"))
-DUPLICATE_WINDOW = 600  # seconds; don't re-preview the same URL in the same channel
 
 # A PRIVMSG line is capped at 512 bytes including our own ":nick!user@host"
 # prefix as relayed to others; leave generous room for it.
@@ -96,7 +95,6 @@ class Bot:
         self.reader = None
         self.writer = None
         self.nick = NICK
-        self.seen = {}  # (channel, url) -> timestamp
         self.rival_lines = []  # (monotonic time, channel, nick, text) from RIVAL_NICKS
         self.send_queue = asyncio.Queue()
 
@@ -259,13 +257,7 @@ class Bot:
         if text.startswith("\x01") and not text.startswith("\x01ACTION "):
             return  # CTCP other than /me
         urls = previews.extract_urls(text)[:MAX_URLS_PER_MESSAGE]
-        now = time.time()
-        self.seen = {k: v for k, v in self.seen.items() if now - v < DUPLICATE_WINDOW}
         for url in urls:
-            key = (target.lower(), url)
-            if key in self.seen:
-                continue
-            self.seen[key] = now
             is_tweet = previews.TWEET_RE.match(url)
             if is_tweet:
                 # Everyone's tweets get a no-login page, built in parallel so

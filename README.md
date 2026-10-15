@@ -43,8 +43,7 @@ Chrome to preview pages that only show their content via JavaScript.
 
 The bot won't fetch private, loopback, or link-local addresses, and it checks
 every redirect hop the same way. It reads at most 1 MiB of any response,
-previews at most 3 URLs per message, skips a URL it already previewed in the
-same channel within the last 10 minutes, and sends at most 6 lines at once,
+previews at most 3 URLs per message, and sends at most 6 lines at once,
 then one line per second.
 
 ## Running
