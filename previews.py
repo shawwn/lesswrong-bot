@@ -184,10 +184,10 @@ def _format_tweet(t, budget):
     return f'{head}"{text}"{suffix}'
 
 
-MEDIA_SEP = " / "  # between media links, so adjacent URLs are easy to tell apart
+MEDIA_MARK = "[+] "  # before each media link, so adjacent URLs are easy to tell apart
 
 
-def _pack_lines(words, limit=TWEET_BUDGET, sep=MEDIA_SEP):
+def _pack_lines(words, limit=TWEET_BUDGET, sep=" "):
     lines = []
     for w in words:
         if lines and len((lines[-1] + sep + w).encode("utf-8")) <= limit:
@@ -255,7 +255,8 @@ def _tweet_text(user, status_id):
 
     # Append media links to the tweet line if that still leaves room for a
     # reasonable amount of text; otherwise put them on following lines.
-    link_str = " " + MEDIA_SEP.join(links) if links else ""
+    links = [MEDIA_MARK + link for link in links]
+    link_str = "".join(" " + link for link in links)
     budget = TWEET_BUDGET - len(link_str.encode("utf-8"))
     if budget >= MIN_TWEET_TEXT:
         extra_lines = []
